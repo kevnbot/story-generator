@@ -8,9 +8,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.fal.ai" },
     ],
   },
-  experimental: {
-    serverComponentsExternalPackages: ["twilio"],
-  },
+  serverExternalPackages: ["twilio"],
 };
 
 export default nextConfig;
