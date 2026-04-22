@@ -14,13 +14,6 @@ interface Profile {
   age_months: number
 }
 
-interface Template {
-  id: string
-  name: string
-  description: string
-  credits_cost: number
-}
-
 interface ArtStyle {
   id: string
   name: string
@@ -28,14 +21,12 @@ interface ArtStyle {
 
 interface StoryGeneratorProps {
   profiles: Profile[]
-  templates: Template[]
   artStyles: ArtStyle[]
   credits: number
   imagesAvailable: boolean
   parentStoryId?: string
   parentStoryTitle?: string
   defaultProfileIds?: string[]
-  defaultTemplateId?: string
 }
 
 type StreamChunk =
@@ -46,21 +37,18 @@ type StreamChunk =
 
 export function StoryGenerator({
   profiles,
-  templates,
   artStyles,
   credits,
   imagesAvailable,
   parentStoryId,
   parentStoryTitle,
   defaultProfileIds = [],
-  defaultTemplateId = "",
 }: StoryGeneratorProps) {
   const initialIds = defaultProfileIds.length > 0
     ? new Set(defaultProfileIds)
     : profiles[0] ? new Set([profiles[0].id]) : new Set<string>()
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
-  const [templateId, setTemplateId] = useState(defaultTemplateId || templates[0]?.id || "")
   const [artStyleId, setArtStyleId] = useState(artStyles[0]?.id ?? "")
   const [storyLength, setStoryLength] = useState<StoryLength>("short")
   const [storyDescription, setStoryDescription] = useState("")
@@ -74,12 +62,10 @@ export function StoryGenerator({
   const [errorMsg, setErrorMsg] = useState("")
   const storyRef = useRef<HTMLDivElement>(null)
 
-  const selectedTemplate = templates.find(t => t.id === templateId)
   const lengthConfig = STORY_LENGTHS[storyLength]
-  const baseCost = selectedTemplate?.credits_cost ?? 1
   const imageCost = includeImages && imagesAvailable ? lengthConfig.imageCost : 0
-  const creditsNeeded = baseCost + imageCost
-  const canGenerate = selectedIds.size > 0 && templateId && credits >= creditsNeeded && status !== "generating"
+  const creditsNeeded = 1 + imageCost
+  const canGenerate = selectedIds.size > 0 && credits >= creditsNeeded && status !== "generating"
 
   function toggleProfile(id: string) {
     setSelectedIds(prev => {
@@ -107,7 +93,6 @@ export function StoryGenerator({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profileIds: [...selectedIds],
-          templateId,
           artStyleId: artStyleId || undefined,
           storyLength,
           storyDescription: storyDescription.trim() || undefined,

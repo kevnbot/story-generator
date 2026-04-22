@@ -21,7 +21,7 @@ export default async function GeneratePage({
     .eq("id", user.id)
     .single()
 
-  const [profilesResult, templatesResult, accountResult, parentResult, artStylesResult] = await Promise.all([
+  const [profilesResult, accountResult, parentResult, artStylesResult] = await Promise.all([
     userRow
       ? service
           .from("kid_profiles")
@@ -30,11 +30,6 @@ export default async function GeneratePage({
           .is("deleted_at", null)
           .order("created_at", { ascending: true })
       : Promise.resolve({ data: [] }),
-    service
-      .from("story_templates")
-      .select("id, name, description, credits_cost")
-      .eq("is_active", true)
-      .order("created_at", { ascending: true }),
     userRow
       ? service
           .from("accounts")
@@ -45,7 +40,7 @@ export default async function GeneratePage({
     parentStoryId && userRow
       ? service
           .from("stories")
-          .select("id, title, story_template_id, generation_params")
+          .select("id, title, generation_params")
           .eq("id", parentStoryId)
           .eq("account_id", userRow.account_id)
           .is("deleted_at", null)
@@ -62,21 +57,16 @@ export default async function GeneratePage({
   const defaultProfileIds: string[] = parent
     ? (parent.generation_params?.kid_profile_ids ?? (parent.generation_params?.kid_profile_id ? [parent.generation_params.kid_profile_id] : []))
     : []
-  const defaultTemplateId: string = parent?.story_template_id ?? ""
-
-  const artStyles = artStylesResult.data ?? []
 
   return (
     <StoryGenerator
       profiles={profilesResult.data ?? []}
-      templates={templatesResult.data ?? []}
-      artStyles={artStyles}
+      artStyles={artStylesResult.data ?? []}
       credits={accountResult.data?.credit_balance ?? 0}
       imagesAvailable={!!process.env.FAL_KEY}
       parentStoryId={parent?.id}
       parentStoryTitle={parent?.title}
       defaultProfileIds={defaultProfileIds}
-      defaultTemplateId={defaultTemplateId}
     />
   )
 }

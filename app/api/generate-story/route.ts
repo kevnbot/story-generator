@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null)
   const profileIds    = body?.profileIds    as string[] | undefined
-  const templateId    = body?.templateId    as string   | undefined
-  const artStyleId       = body?.artStyleId        as string   | undefined
+  const artStyleId    = body?.artStyleId    as string   | undefined
   const rawLength        = body?.storyLength       as string   | undefined
   const storyLength: StoryLength = (rawLength && rawLength in STORY_LENGTHS) ? rawLength as StoryLength : "short"
   const storyDescription = body?.storyDescription as string   | undefined
@@ -25,8 +24,8 @@ export async function POST(request: NextRequest) {
   const parentStoryId    = body?.parentStoryId    as string   | undefined
   const feedback         = body?.feedback         as string   | undefined
 
-  if (!profileIds?.length || !templateId) {
-    return NextResponse.json({ error: "profileIds and templateId required" }, { status: 400 })
+  if (!profileIds?.length) {
+    return NextResponse.json({ error: "profileIds required" }, { status: 400 })
   }
 
   const { allowed } = await checkStoryRateLimit(user.id)
@@ -70,8 +69,9 @@ export async function POST(request: NextRequest) {
     service
       .from("story_templates")
       .select("*")
-      .eq("id", templateId)
       .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
       .single(),
     parentStoryId
       ? service
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       account_id: userRow.account_id,
       user_id: user.id,
       kid_profile_id: primaryProfileId,
-      story_template_id: templateId,
+      story_template_id: t.id,
       status: "generating",
       credits_held: creditsNeeded,
       started_at: new Date().toISOString(),
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
             account_id: userRow.account_id,
             user_id: user.id,
             kid_profile_id: primaryProfileId,
-            story_template_id: templateId,
+            story_template_id: t.id,
             job_id: job.id,
             parent_story_id: parentStoryId ?? null,
             version_number: versionNumber,
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
               kid_profile_id: primaryProfileId,
               kid_profile_ids: profiles.map(p => p.id),
               kid_names: profiles.map(p => p.name),
-              story_template_id: templateId,
+              story_template_id: t.id,
               prompt_summary: profiles.map(p => p.prompt_summary).join(" "),
               system_prompt: systemPrompt,
               user_prompt: userPrompt,
