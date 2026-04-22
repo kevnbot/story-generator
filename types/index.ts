@@ -100,6 +100,8 @@ export interface StoryImage {
 
 export interface GenerationParams {
   kid_profile_id: string
+  kid_profile_ids?: string[]
+  kid_names?: string[]
   story_template_id: string
   prompt_summary: string
   system_prompt: string
@@ -116,6 +118,9 @@ export interface Story {
   kid_profile_id: string | null
   story_template_id: string | null
   job_id: string | null
+  parent_story_id: string | null
+  version_number: number
+  has_images: boolean
   title: string
   content: string
   images: StoryImage[]

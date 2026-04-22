@@ -2,10 +2,16 @@ import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { StoryGenerator } from "@/components/generate/story-generator"
 
-export default async function GeneratePage() {
+export default async function GeneratePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ parentStoryId?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
+
+  const { parentStoryId } = await searchParams
 
   const service = createServiceClient()
 
@@ -15,7 +21,7 @@ export default async function GeneratePage() {
     .eq("id", user.id)
     .single()
 
-  const [profilesResult, templatesResult, accountResult] = await Promise.all([
+  const [profilesResult, templatesResult, accountResult, parentResult] = await Promise.all([
     userRow
       ? service
           .from("kid_profiles")
@@ -36,13 +42,33 @@ export default async function GeneratePage() {
           .eq("id", userRow.account_id)
           .single()
       : Promise.resolve({ data: null }),
+    parentStoryId && userRow
+      ? service
+          .from("stories")
+          .select("id, title, story_template_id, generation_params")
+          .eq("id", parentStoryId)
+          .eq("account_id", userRow.account_id)
+          .is("deleted_at", null)
+          .single()
+      : Promise.resolve({ data: null }),
   ])
+
+  const parent = parentResult.data
+  const defaultProfileIds: string[] = parent
+    ? (parent.generation_params?.kid_profile_ids ?? (parent.generation_params?.kid_profile_id ? [parent.generation_params.kid_profile_id] : []))
+    : []
+  const defaultTemplateId: string = parent?.story_template_id ?? ""
 
   return (
     <StoryGenerator
       profiles={profilesResult.data ?? []}
       templates={templatesResult.data ?? []}
       credits={accountResult.data?.credit_balance ?? 0}
+      imagesAvailable={!!process.env.FAL_KEY}
+      parentStoryId={parent?.id}
+      parentStoryTitle={parent?.title}
+      defaultProfileIds={defaultProfileIds}
+      defaultTemplateId={defaultTemplateId}
     />
   )
 }
