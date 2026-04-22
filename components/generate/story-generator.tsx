@@ -238,6 +238,17 @@ export function StoryGenerator({
           )}
         </div>
 
+        {/* Title */}
+        <div className="space-y-1.5">
+          <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <Input
+            id="custom-title"
+            placeholder="Leave blank to auto-generate"
+            value={customTitle}
+            onChange={e => setCustomTitle(e.target.value)}
+          />
+        </div>
+
         {/* Story length */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Story length</label>
@@ -298,17 +309,6 @@ export function StoryGenerator({
             value={storyDescription}
             onChange={e => setStoryDescription(e.target.value)}
             className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-          />
-        </div>
-
-        {/* Title */}
-        <div className="space-y-1.5">
-          <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
-          <Input
-            id="custom-title"
-            placeholder="Leave blank to auto-generate"
-            value={customTitle}
-            onChange={e => setCustomTitle(e.target.value)}
           />
         </div>
 
