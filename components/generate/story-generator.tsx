@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatAge } from "@/lib/ai/prompt-builder"
-
-const IMAGE_CREDIT_SURCHARGE = 2
+import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 
 interface Profile {
   id: string
@@ -55,6 +54,7 @@ export function StoryGenerator({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
   const [templateId, setTemplateId] = useState(defaultTemplateId || templates[0]?.id || "")
+  const [storyLength, setStoryLength] = useState<StoryLength>("short")
   const [storyDescription, setStoryDescription] = useState("")
   const [customTitle, setCustomTitle] = useState("")
   const [includeImages, setIncludeImages] = useState(false)
@@ -67,8 +67,10 @@ export function StoryGenerator({
   const storyRef = useRef<HTMLDivElement>(null)
 
   const selectedTemplate = templates.find(t => t.id === templateId)
+  const lengthConfig = STORY_LENGTHS[storyLength]
   const baseCost = selectedTemplate?.credits_cost ?? 1
-  const creditsNeeded = baseCost + (includeImages && imagesAvailable ? IMAGE_CREDIT_SURCHARGE : 0)
+  const imageCost = includeImages && imagesAvailable ? lengthConfig.imageCost : 0
+  const creditsNeeded = baseCost + imageCost
   const canGenerate = selectedIds.size > 0 && templateId && credits >= creditsNeeded && status !== "generating"
 
   function toggleProfile(id: string) {
@@ -98,6 +100,7 @@ export function StoryGenerator({
         body: JSON.stringify({
           profileIds: [...selectedIds],
           templateId,
+          storyLength,
           storyDescription: storyDescription.trim() || undefined,
           customTitle: customTitle.trim() || undefined,
           includeImages,
@@ -265,6 +268,33 @@ export function StoryGenerator({
           </div>
         </div>
 
+        {/* Story length */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Story length</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.entries(STORY_LENGTHS) as [StoryLength, typeof STORY_LENGTHS[StoryLength]][]).map(([key, cfg]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStoryLength(key)}
+                className={`p-3 rounded-lg border text-left transition-colors ${
+                  storyLength === key
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input bg-background hover:bg-accent"
+                }`}
+              >
+                <div className="font-medium text-sm">{cfg.label}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {cfg.pages} pages · {cfg.imageCount} images
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  +{cfg.imageCost} image credit{cfg.imageCost !== 1 ? "s" : ""}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Story description */}
         <div className="space-y-1.5">
           <Label htmlFor="story-description">What should the story be about?</Label>
@@ -310,7 +340,7 @@ export function StoryGenerator({
             <div className="text-sm font-medium">Include images</div>
             <div className="text-xs text-muted-foreground">
               {imagesAvailable
-                ? `+${IMAGE_CREDIT_SURCHARGE} credits — AI-generated scene illustration`
+                ? `+${lengthConfig.imageCost} credit${lengthConfig.imageCost !== 1 ? "s" : ""} — ${lengthConfig.imageCount} AI-generated illustrations`
                 : "Image generation is not configured"}
             </div>
           </div>
@@ -384,6 +414,7 @@ export function StoryGenerator({
                   setStatus("idle")
                   setStoryText("")
                   setStoryTitle("")
+                  setStoryLength("short")
                   setStoryDescription("")
                   setFeedback("")
                   setCustomTitle("")

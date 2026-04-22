@@ -6,8 +6,7 @@ import { fillPromptTemplateMulti, joinNames } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
-
-const IMAGE_CREDIT_SURCHARGE = 2
+import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -17,6 +16,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const profileIds    = body?.profileIds    as string[] | undefined
   const templateId    = body?.templateId    as string   | undefined
+  const rawLength        = body?.storyLength       as string   | undefined
+  const storyLength: StoryLength = (rawLength && rawLength in STORY_LENGTHS) ? rawLength as StoryLength : "short"
   const storyDescription = body?.storyDescription as string   | undefined
   const customTitle      = body?.customTitle      as string   | undefined
   const includeImages    = body?.includeImages    as boolean  ?? false
@@ -48,9 +49,10 @@ export async function POST(request: NextRequest) {
     .eq("id", userRow.account_id)
     .single()
 
+  const lengthConfig = STORY_LENGTHS[storyLength]
   const imagesEnabled = includeImages && !!process.env.FAL_KEY
   const baseCredits = await config.creditsPerStory()
-  const creditsNeeded = baseCredits + (imagesEnabled ? IMAGE_CREDIT_SURCHARGE : 0)
+  const creditsNeeded = baseCredits + (imagesEnabled ? lengthConfig.imageCost : 0)
 
   if (!account || account.credit_balance < creditsNeeded) {
     return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
@@ -106,6 +108,9 @@ export async function POST(request: NextRequest) {
   const imagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
   const systemPrompt = t.system_prompt
 
+  // Inject page count so Claude structures the story correctly
+  userPrompt = `${userPrompt}\n\nWrite this as exactly ${lengthConfig.pages} pages. Each page should be a short paragraph of 2-3 sentences suitable for a children's picture book.`
+
   // Inject the user's story description
   if (storyDescription?.trim()) {
     userPrompt = `${userPrompt}\n\nStory request: ${storyDescription.trim()}`
@@ -154,12 +159,18 @@ export async function POST(request: NextRequest) {
 
         const title = customTitle?.trim() || await extractStoryTitle(fullText, primaryName)
 
-        // Generate images if requested and FAL_KEY is available
+        // Generate images in parallel if requested and FAL_KEY is available
         const images: StoryImage[] = []
         if (imagesEnabled) {
-          send({ type: "status", message: "Generating images..." })
-          const url = await generateStoryImage(imagePrompt)
-          if (url) images.push({ url, caption: null, scene_index: 0 })
+          send({ type: "status", message: `Generating ${lengthConfig.imageCount} images...` })
+          const urls = await Promise.all(
+            Array.from({ length: lengthConfig.imageCount }, (_, i) =>
+              generateStoryImage(`${imagePrompt} (page ${i + 1} of ${lengthConfig.imageCount})`)
+            )
+          )
+          urls.forEach((url, i) => {
+            if (url) images.push({ url, caption: null, scene_index: i })
+          })
         }
 
         const { data: story } = await service
