@@ -55,6 +55,7 @@ export function StoryGenerator({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
   const [templateId, setTemplateId] = useState(defaultTemplateId || templates[0]?.id || "")
+  const [storyDescription, setStoryDescription] = useState("")
   const [customTitle, setCustomTitle] = useState("")
   const [includeImages, setIncludeImages] = useState(false)
   const [feedback, setFeedback] = useState("")
@@ -97,6 +98,7 @@ export function StoryGenerator({
         body: JSON.stringify({
           profileIds: [...selectedIds],
           templateId,
+          storyDescription: storyDescription.trim() || undefined,
           customTitle: customTitle.trim() || undefined,
           includeImages,
           parentStoryId: parentStoryId || undefined,
@@ -263,6 +265,19 @@ export function StoryGenerator({
           </div>
         </div>
 
+        {/* Story description */}
+        <div className="space-y-1.5">
+          <Label htmlFor="story-description">What should the story be about?</Label>
+          <textarea
+            id="story-description"
+            rows={3}
+            placeholder="e.g. going to the dentist for the first time, a dragon who is afraid of the dark, finding a secret door in the garden…"
+            value={storyDescription}
+            onChange={e => setStoryDescription(e.target.value)}
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+          />
+        </div>
+
         {/* Title */}
         <div className="space-y-1.5">
           <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
@@ -369,6 +384,7 @@ export function StoryGenerator({
                   setStatus("idle")
                   setStoryText("")
                   setStoryTitle("")
+                  setStoryDescription("")
                   setFeedback("")
                   setCustomTitle("")
                 }}

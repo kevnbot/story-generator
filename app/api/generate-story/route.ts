@@ -17,10 +17,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const profileIds    = body?.profileIds    as string[] | undefined
   const templateId    = body?.templateId    as string   | undefined
-  const customTitle   = body?.customTitle   as string   | undefined
-  const includeImages = body?.includeImages as boolean  ?? false
-  const parentStoryId = body?.parentStoryId as string   | undefined
-  const feedback      = body?.feedback      as string   | undefined
+  const storyDescription = body?.storyDescription as string   | undefined
+  const customTitle      = body?.customTitle      as string   | undefined
+  const includeImages    = body?.includeImages    as boolean  ?? false
+  const parentStoryId    = body?.parentStoryId    as string   | undefined
+  const feedback         = body?.feedback         as string   | undefined
 
   if (!profileIds?.length || !templateId) {
     return NextResponse.json({ error: "profileIds and templateId required" }, { status: 400 })
@@ -104,6 +105,11 @@ export async function POST(request: NextRequest) {
   let userPrompt = fillPromptTemplateMulti(t.user_prompt_template, profiles)
   const imagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
   const systemPrompt = t.system_prompt
+
+  // Inject the user's story description
+  if (storyDescription?.trim()) {
+    userPrompt = `${userPrompt}\n\nStory request: ${storyDescription.trim()}`
+  }
 
   // Inject revision context when creating a version with feedback
   if (parentResult.data?.content && feedback?.trim()) {
