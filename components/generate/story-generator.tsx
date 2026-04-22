@@ -21,9 +21,15 @@ interface Template {
   credits_cost: number
 }
 
+interface ArtStyle {
+  id: string
+  name: string
+}
+
 interface StoryGeneratorProps {
   profiles: Profile[]
   templates: Template[]
+  artStyles: ArtStyle[]
   credits: number
   imagesAvailable: boolean
   parentStoryId?: string
@@ -41,6 +47,7 @@ type StreamChunk =
 export function StoryGenerator({
   profiles,
   templates,
+  artStyles,
   credits,
   imagesAvailable,
   parentStoryId,
@@ -54,6 +61,7 @@ export function StoryGenerator({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
   const [templateId, setTemplateId] = useState(defaultTemplateId || templates[0]?.id || "")
+  const [artStyleId, setArtStyleId] = useState(artStyles[0]?.id ?? "")
   const [storyLength, setStoryLength] = useState<StoryLength>("short")
   const [storyDescription, setStoryDescription] = useState("")
   const [customTitle, setCustomTitle] = useState("")
@@ -100,6 +108,7 @@ export function StoryGenerator({
         body: JSON.stringify({
           profileIds: [...selectedIds],
           templateId,
+          artStyleId: artStyleId || undefined,
           storyLength,
           storyDescription: storyDescription.trim() || undefined,
           customTitle: customTitle.trim() || undefined,
@@ -294,6 +303,29 @@ export function StoryGenerator({
             ))}
           </div>
         </div>
+
+        {/* Art style */}
+        {artStyles.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Art style</label>
+            <div className="flex flex-wrap gap-2">
+              {artStyles.map(style => (
+                <button
+                  key={style.id}
+                  type="button"
+                  onClick={() => setArtStyleId(style.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                    artStyleId === style.id
+                      ? "border-primary bg-primary/5 ring-1 ring-primary font-medium"
+                      : "border-input bg-background hover:bg-accent"
+                  }`}
+                >
+                  {style.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Story description */}
         <div className="space-y-1.5">

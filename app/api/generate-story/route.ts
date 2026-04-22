@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const profileIds    = body?.profileIds    as string[] | undefined
   const templateId    = body?.templateId    as string   | undefined
+  const artStyleId       = body?.artStyleId        as string   | undefined
   const rawLength        = body?.storyLength       as string   | undefined
   const storyLength: StoryLength = (rawLength && rawLength in STORY_LENGTHS) ? rawLength as StoryLength : "short"
   const storyDescription = body?.storyDescription as string   | undefined
@@ -81,13 +82,14 @@ export async function POST(request: NextRequest) {
           .is("deleted_at", null)
           .single()
       : Promise.resolve({ data: null }),
-    service
-      .from("art_styles")
-      .select("id, prompt_prefix")
-      .eq("is_active", true)
-      .order("id", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+    artStyleId
+      ? service
+          .from("art_styles")
+          .select("id, prompt_prefix")
+          .eq("id", artStyleId)
+          .eq("is_active", true)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   const profiles = profilesResult.data as KidProfile[] | null

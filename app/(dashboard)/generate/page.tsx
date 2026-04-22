@@ -21,7 +21,7 @@ export default async function GeneratePage({
     .eq("id", user.id)
     .single()
 
-  const [profilesResult, templatesResult, accountResult, parentResult] = await Promise.all([
+  const [profilesResult, templatesResult, accountResult, parentResult, artStylesResult] = await Promise.all([
     userRow
       ? service
           .from("kid_profiles")
@@ -51,6 +51,11 @@ export default async function GeneratePage({
           .is("deleted_at", null)
           .single()
       : Promise.resolve({ data: null }),
+    service
+      .from("art_styles")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
   ])
 
   const parent = parentResult.data
@@ -59,10 +64,13 @@ export default async function GeneratePage({
     : []
   const defaultTemplateId: string = parent?.story_template_id ?? ""
 
+  const artStyles = artStylesResult.data ?? []
+
   return (
     <StoryGenerator
       profiles={profilesResult.data ?? []}
       templates={templatesResult.data ?? []}
+      artStyles={artStyles}
       credits={accountResult.data?.credit_balance ?? 0}
       imagesAvailable={!!process.env.FAL_KEY}
       parentStoryId={parent?.id}
