@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { generateStoryStream, extractStoryTitle } from "@/lib/ai/story"
-import { fillPromptTemplate } from "@/lib/ai/prompt-builder"
+import { fillPromptTemplateMulti, joinNames } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import type { KidProfile, StoryTemplate } from "@/types"
@@ -12,11 +12,11 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json().catch(() => null)
-  const profileId = body?.profileId as string | undefined
+  const profileIds = body?.profileIds as string[] | undefined
   const templateId = body?.templateId as string | undefined
 
-  if (!profileId || !templateId) {
-    return NextResponse.json({ error: "profileId and templateId required" }, { status: 400 })
+  if (!profileIds?.length || !templateId) {
+    return NextResponse.json({ error: "profileIds and templateId required" }, { status: 400 })
   }
 
   const { allowed } = await checkStoryRateLimit(user.id)
@@ -46,14 +46,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
   }
 
-  const [{ data: profile }, { data: template }] = await Promise.all([
+  const [profilesResult, { data: template }] = await Promise.all([
     service
       .from("kid_profiles")
       .select("*")
-      .eq("id", profileId)
+      .in("id", profileIds)
       .eq("account_id", userRow.account_id)
-      .is("deleted_at", null)
-      .single(),
+      .is("deleted_at", null),
     service
       .from("story_templates")
       .select("*")
@@ -62,21 +61,22 @@ export async function POST(request: NextRequest) {
       .single(),
   ])
 
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const profiles = profilesResult.data as KidProfile[] | null
+  if (!profiles?.length) return NextResponse.json({ error: "Profiles not found" }, { status: 404 })
   if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 })
 
-  const userPrompt = fillPromptTemplate(
-    (template as StoryTemplate).user_prompt_template,
-    profile as KidProfile
-  )
-  const systemPrompt = (template as StoryTemplate).system_prompt
+  const t = template as StoryTemplate
+  const userPrompt = fillPromptTemplateMulti(t.user_prompt_template, profiles)
+  const imagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
+  const systemPrompt = t.system_prompt
+  const primaryProfileId = profiles[0].id
 
   const { data: job } = await service
     .from("generation_jobs")
     .insert({
       account_id: userRow.account_id,
       user_id: user.id,
-      kid_profile_id: profileId,
+      kid_profile_id: primaryProfileId,
       story_template_id: templateId,
       status: "generating",
       credits_held: creditsNeeded,
@@ -101,26 +101,30 @@ export async function POST(request: NextRequest) {
           send({ type: "chunk", text: chunk })
         }
 
-        const title = await extractStoryTitle(fullText, (profile as KidProfile).name)
+        const primaryName = profiles.length === 1
+          ? profiles[0].name
+          : joinNames(profiles.map(p => p.name))
+        const title = await extractStoryTitle(fullText, primaryName)
 
         const { data: story } = await service
           .from("stories")
           .insert({
             account_id: userRow.account_id,
             user_id: user.id,
-            kid_profile_id: profileId,
+            kid_profile_id: primaryProfileId,
             story_template_id: templateId,
             job_id: job.id,
             title,
             content: fullText,
             images: [],
             generation_params: {
-              kid_profile_id: profileId,
+              kid_profile_id: primaryProfileId,
+              kid_profile_ids: profiles.map(p => p.id),
               story_template_id: templateId,
-              prompt_summary: (profile as KidProfile).prompt_summary,
+              prompt_summary: profiles.map(p => p.prompt_summary).join(" "),
               system_prompt: systemPrompt,
               user_prompt: userPrompt,
-              image_prompt: (template as StoryTemplate).image_prompt_template,
+              image_prompt: imagePrompt,
               model: "claude-opus-4-7",
               image_model: "",
             },

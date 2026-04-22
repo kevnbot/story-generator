@@ -28,7 +28,9 @@ type StreamChunk =
   | { type: "error"; message: string }
 
 export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorProps) {
-  const [profileId, setProfileId] = useState(profiles[0]?.id ?? "")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    profiles[0] ? new Set([profiles[0].id]) : new Set()
+  )
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? "")
   const [status, setStatus] = useState<"idle" | "generating" | "done" | "error">("idle")
   const [storyText, setStoryText] = useState("")
@@ -38,7 +40,21 @@ export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorP
 
   const selectedTemplate = templates.find(t => t.id === templateId)
   const creditsNeeded = selectedTemplate?.credits_cost ?? 10
-  const canGenerate = profileId && templateId && credits >= creditsNeeded && status !== "generating"
+  const canGenerate = selectedIds.size > 0 && templateId && credits >= creditsNeeded && status !== "generating"
+
+  function toggleProfile(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        // don't deselect the last one
+        if (next.size === 1) return prev
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   async function generate() {
     setStatus("generating")
@@ -50,7 +66,7 @@ export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorP
       const response = await fetch("/api/generate-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileId, templateId }),
+        body: JSON.stringify({ profileIds: [...selectedIds], templateId }),
       })
 
       if (!response.ok) {
@@ -115,6 +131,12 @@ export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorP
     )
   }
 
+  const selectionLabel = selectedIds.size === 0
+    ? "Select at least one"
+    : selectedIds.size === 1
+      ? profiles.find(p => selectedIds.has(p.id))?.name
+      : `${selectedIds.size} kids`
+
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
@@ -126,24 +148,48 @@ export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorP
 
       <div className="rounded-xl border bg-card p-6 space-y-5">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Who is this story for?</label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {profiles.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setProfileId(p.id)}
-                className={`p-3 rounded-lg border text-left transition-colors ${
-                  profileId === p.id
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-input bg-background hover:bg-accent"
-                }`}
-              >
-                <div className="font-medium text-sm">{p.name}</div>
-                <div className="text-xs text-muted-foreground">Age {p.age}</div>
-              </button>
-            ))}
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Who stars in this story?</label>
+            {profiles.length > 1 && (
+              <span className="text-xs text-muted-foreground">{selectionLabel} selected</span>
+            )}
           </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {profiles.map(p => {
+              const isSelected = selectedIds.has(p.id)
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => toggleProfile(p.id)}
+                  className={`p-3 rounded-lg border text-left transition-colors relative ${
+                    isSelected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-input bg-background hover:bg-accent"
+                  }`}
+                >
+                  {profiles.length > 1 && (
+                    <span
+                      className={`absolute top-2 right-2 w-4 h-4 rounded-sm border flex items-center justify-center text-[10px] font-bold transition-colors ${
+                        isSelected
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-input"
+                      }`}
+                    >
+                      {isSelected ? "✓" : ""}
+                    </span>
+                  )}
+                  <div className="font-medium text-sm pr-5">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">Age {p.age}</div>
+                </button>
+              )
+            })}
+          </div>
+          {profiles.length > 1 && (
+            <p className="text-xs text-muted-foreground">
+              Select multiple kids to have them all appear in the story together.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
