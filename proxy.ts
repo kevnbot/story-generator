@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/api/stripe/webhook", "/api/twilio/webhook"]
+const PUBLIC_ROUTES = ["/login", "/signup", "/verify-email", "/api/stripe/webhook", "/api/twilio/webhook"]
 const ADMIN_ROUTES = ["/admin"]
 
 export async function proxy(request: NextRequest) {

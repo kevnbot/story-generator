@@ -1,33 +1,28 @@
 import Anthropic from "@anthropic-ai/sdk"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  defaultHeaders: {
+    "anthropic-beta": "prompt-caching-2024-07-31",
+  },
+})
 
-export async function generateStoryText(
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
-  })
-
-  const block = message.content[0]
-  if (block.type !== "text") throw new Error("Unexpected response type from Claude")
-  return block.text
-}
-
-// Streaming version — yields chunks for real-time display
 export async function* generateStoryStream(
   systemPrompt: string,
   userPrompt: string
 ): AsyncGenerator<string> {
   const stream = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
+    model: "claude-opus-4-7",
+    max_tokens: 2048,
+    system: [
+      {
+        type: "text",
+        text: systemPrompt,
+        // @ts-expect-error — cache_control is a beta field not yet in SDK types
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
     stream: true,
   })
 
@@ -41,14 +36,13 @@ export async function* generateStoryStream(
   }
 }
 
-// Extract a title from the generated story content
 export async function extractStoryTitle(content: string, childName: string): Promise<string> {
   const message = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-haiku-4-5",
     max_tokens: 50,
     messages: [{
       role: "user",
-      content: `Generate a short, charming title (5 words or fewer) for this children's bedtime story. Return only the title, nothing else.\n\n${content.slice(0, 500)}`
+      content: `Generate a short, charming title (5 words or fewer) for this children's bedtime story. Return only the title, nothing else.\n\n${content.slice(0, 500)}`,
     }],
   })
 
