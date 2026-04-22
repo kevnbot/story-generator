@@ -26,7 +26,7 @@ async function getConfig(key: string, fallback: string): Promise<string> {
 }
 
 export const config = {
-  creditsPerStory: () => getConfig("credits_per_story", "10").then(Number),
+  creditsPerStory: () => getConfig("credits_per_story", "1").then(Number),
   freeTierCredits: () => getConfig("free_tier_credits", "30").then(Number),
   lowCreditsThreshold: () => getConfig("low_credits_threshold", "5").then(Number),
   maxFamilyMembers: () => getConfig("max_family_members", "5").then(Number),
