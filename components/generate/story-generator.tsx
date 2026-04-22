@@ -253,30 +253,6 @@ export function StoryGenerator({
           )}
         </div>
 
-        {/* Template selector */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Story style</label>
-          <div className="grid gap-2">
-            {templates.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTemplateId(t.id)}
-                className={`p-3 rounded-lg border text-left transition-colors ${
-                  templateId === t.id
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-input bg-background hover:bg-accent"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">{t.name}</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Story length */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Story length</label>
