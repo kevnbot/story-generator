@@ -58,8 +58,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
   }
 
-  // Fetch profiles and template in parallel; also fetch parent story if versioning
-  const [profilesResult, { data: template }, parentResult] = await Promise.all([
+  // Fetch profiles, template, parent story, and default art style in parallel
+  const [profilesResult, { data: template }, parentResult, { data: artStyle }] = await Promise.all([
     service
       .from("kid_profiles")
       .select("*")
@@ -81,6 +81,13 @@ export async function POST(request: NextRequest) {
           .is("deleted_at", null)
           .single()
       : Promise.resolve({ data: null }),
+    service
+      .from("art_styles")
+      .select("id, prompt_prefix")
+      .eq("is_active", true)
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const profiles = profilesResult.data as KidProfile[] | null
@@ -105,7 +112,10 @@ export async function POST(request: NextRequest) {
 
   const t = template as StoryTemplate
   let userPrompt = fillPromptTemplateMulti(t.user_prompt_template, profiles)
-  const imagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
+  const filledImagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
+  const imagePrompt = artStyle?.prompt_prefix
+    ? `${artStyle.prompt_prefix} ${filledImagePrompt}`
+    : filledImagePrompt
   const systemPrompt = t.system_prompt
 
   // Inject page count so Claude structures the story correctly
