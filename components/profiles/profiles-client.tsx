@@ -4,17 +4,22 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { ProfileForm } from "./profile-form"
 import { deleteProfile } from "@/app/actions/profiles"
+import { formatAge } from "@/lib/ai/prompt-builder"
 
 interface Profile {
   id: string
   name: string
   age: number
+  age_months: number
+  gender?: string
+  appearance: { hair?: string; hair_color?: string; eye_color?: string }
   personality_tags: string[]
-  toy: { name: string; type?: string }
+  toy: { name: string; description?: string; type?: string }
 }
 
 export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
   const [showForm, setShowForm] = useState(profiles.length === 0)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   const handleDelete = (id: string) => {
@@ -30,7 +35,7 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
             Each profile personalizes stories for that child.
           </p>
         </div>
-        {profiles.length > 0 && !showForm && (
+        {profiles.length > 0 && !showForm && !editingId && (
           <Button onClick={() => setShowForm(true)} size="sm">
             Add Profile
           </Button>
@@ -40,36 +45,65 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
       {profiles.length > 0 && (
         <div className="grid gap-3">
           {profiles.map(profile => (
-            <div
-              key={profile.id}
-              className="flex items-center justify-between p-4 rounded-xl border bg-card"
-            >
-              <div>
-                <div className="font-medium">{profile.name}, age {profile.age}</div>
-                {profile.toy?.name && (
-                  <div className="text-sm text-muted-foreground">
-                    Toy: {profile.toy.name}{profile.toy.type ? ` (${profile.toy.type})` : ""}
+            <div key={profile.id}>
+              {editingId === profile.id ? (
+                <div className="rounded-xl border p-6 bg-card">
+                  <h2 className="font-semibold mb-4">Edit {profile.name}</h2>
+                  <ProfileForm
+                    profile={profile}
+                    onSuccess={() => setEditingId(null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="mt-3 text-sm text-muted-foreground hover:text-foreground w-full text-center"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 rounded-xl border bg-card">
+                  <div>
+                    <div className="font-medium">
+                      {profile.name}, {formatAge(profile.age, profile.age_months ?? 0)}
+                      {profile.gender ? <span className="ml-1 text-muted-foreground font-normal">· {profile.gender}</span> : null}
+                    </div>
+                    {profile.toy?.name && profile.toy.name !== "their favorite toy" && (
+                      <div className="text-sm text-muted-foreground">
+                        Toy: {profile.toy.name}
+                        {(profile.toy.description || profile.toy.type)
+                          ? ` — ${profile.toy.description ?? profile.toy.type}`
+                          : ""}
+                      </div>
+                    )}
+                    {profile.personality_tags.length > 0 && (
+                      <div className="text-sm text-muted-foreground mt-0.5">
+                        {profile.personality_tags[0]}
+                      </div>
+                    )}
                   </div>
-                )}
-                {profile.personality_tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {profile.personality_tags.map(tag => (
-                      <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                        {tag}
-                      </span>
-                    ))}
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setShowForm(false); setEditingId(profile.id) }}
+                      disabled={pending}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(profile.id)}
+                      disabled={pending}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </Button>
                   </div>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleDelete(profile.id)}
-                disabled={pending}
-                className="text-muted-foreground hover:text-destructive shrink-0"
-              >
-                Remove
-              </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>

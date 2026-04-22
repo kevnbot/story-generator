@@ -1,8 +1,17 @@
 import type { KidProfile, KidAppearance, KidToy } from "@/types"
 
+export function formatAge(age: number, age_months: number): string {
+  if (age === 0 && age_months === 0) return "a newborn"
+  if (age === 0) return `${age_months} month${age_months === 1 ? "" : "s"} old`
+  if (age_months === 0) return `${age} year${age === 1 ? "" : "s"} old`
+  return `${age} year${age === 1 ? "" : "s"} and ${age_months} month${age_months === 1 ? "" : "s"} old`
+}
+
 function buildAppearanceSummary(appearance: KidAppearance): string {
   const parts: string[] = []
-  if (appearance.hair_color && appearance.hair_style)
+  if (appearance.hair)
+    parts.push(`${appearance.hair} hair`)
+  else if (appearance.hair_color && appearance.hair_style)
     parts.push(`${appearance.hair_color} ${appearance.hair_style} hair`)
   else if (appearance.hair_color)
     parts.push(`${appearance.hair_color} hair`)
@@ -15,13 +24,12 @@ function buildAppearanceSummary(appearance: KidAppearance): string {
 }
 
 function buildToySummary(toy: KidToy): string {
-  const parts: string[] = []
-  if (toy.name) parts.push(toy.name)
-  if (toy.type) parts.push(`(a ${toy.type})`)
-  if (toy.color) parts.push(`— ${toy.color}`)
-  if (toy.description) parts.push(`— ${toy.description}`)
-  if (toy.backstory) parts.push(`. ${toy.backstory}`)
-  return parts.join(" ")
+  if (!toy.name) return ""
+  let result = toy.name
+  if (toy.description) result += `, ${toy.description}`
+  else if (toy.type) result += ` (a ${toy.type})`
+  if (toy.backstory) result += `. ${toy.backstory}`
+  return result
 }
 
 // Joins a list of names naturally: "Emma", "Emma and Jake", "Emma, Jake, and Sophie"
@@ -32,8 +40,13 @@ export function joinNames(names: string[]): string {
 }
 
 // Builds the prompt_summary string stored on the profile row.
-export function buildPromptSummary(profile: Pick<KidProfile, "name" | "age" | "appearance" | "personality_tags" | "toy">): string {
+export function buildPromptSummary(
+  profile: Pick<KidProfile, "name" | "age" | "age_months" | "gender" | "appearance" | "personality_tags" | "toy">
+): string {
   const parts: string[] = []
+
+  if (profile.gender)
+    parts.push(`${profile.name} is a ${profile.gender}.`)
 
   const appearance = buildAppearanceSummary(profile.appearance)
   if (appearance) parts.push(`${profile.name} has ${appearance}.`)
@@ -51,10 +64,12 @@ export function buildPromptSummary(profile: Pick<KidProfile, "name" | "age" | "a
 export function fillPromptTemplate(template: string, profile: KidProfile): string {
   const appearanceSummary = buildAppearanceSummary(profile.appearance)
   const toySummary = buildToySummary(profile.toy)
+  const ageStr = formatAge(profile.age, profile.age_months ?? 0)
 
   return template
     .replace(/{{child_name}}/g, profile.name)
-    .replace(/{{child_age}}/g, String(profile.age))
+    .replace(/{{child_age}}/g, ageStr)
+    .replace(/{{child_gender}}/g, profile.gender ?? "")
     .replace(/{{prompt_summary}}/g, profile.prompt_summary)
     .replace(/{{appearance_summary}}/g, appearanceSummary)
     .replace(/{{toy_summary}}/g, toySummary)
@@ -67,19 +82,15 @@ export function fillPromptTemplateMulti(template: string, profiles: KidProfile[]
   if (profiles.length === 1) return fillPromptTemplate(template, profiles[0])
 
   const names = joinNames(profiles.map(p => p.name))
+  const ages = joinNames(profiles.map(p => formatAge(p.age, p.age_months ?? 0)))
 
-  // "5 and 7" or "5, 7, and 8"
-  const ages = joinNames(profiles.map(p => String(p.age)))
-
-  // Full per-child description block for {{prompt_summary}}
   const combinedSummary = profiles
     .map(p => {
-      const lines: string[] = [`${p.name} (age ${p.age}):`, p.prompt_summary]
-      return lines.join(" ")
+      const age = formatAge(p.age, p.age_months ?? 0)
+      return `${p.name} (${age}): ${p.prompt_summary}`
     })
     .join(" ")
 
-  // "Emma has brown hair; Jake has blonde hair"
   const combinedAppearance = profiles
     .map(p => {
       const a = buildAppearanceSummary(p.appearance)
@@ -88,7 +99,6 @@ export function fillPromptTemplateMulti(template: string, profiles: KidProfile[]
     .filter(Boolean)
     .join("; ")
 
-  // "Emma's toy is Teddy; Jake's toy is Rocket"
   const combinedToys = profiles
     .map(p => {
       const t = buildToySummary(p.toy)
@@ -97,12 +107,12 @@ export function fillPromptTemplateMulti(template: string, profiles: KidProfile[]
     .filter(Boolean)
     .join("; ")
 
-  // Deduplicated union of all personality tags
   const combinedTags = [...new Set(profiles.flatMap(p => p.personality_tags))].join(", ")
 
   return template
     .replace(/{{child_name}}/g, names)
     .replace(/{{child_age}}/g, ages)
+    .replace(/{{child_gender}}/g, profiles.map(p => p.gender ?? "").filter(Boolean).join(", "))
     .replace(/{{prompt_summary}}/g, combinedSummary)
     .replace(/{{appearance_summary}}/g, combinedAppearance)
     .replace(/{{toy_summary}}/g, combinedToys)

@@ -2,11 +2,13 @@
 
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
+import { formatAge } from "@/lib/ai/prompt-builder"
 
 interface Profile {
   id: string
   name: string
   age: number
+  age_months: number
 }
 
 interface Template {
@@ -180,7 +182,7 @@ export function StoryGenerator({ profiles, templates, credits }: StoryGeneratorP
                     </span>
                   )}
                   <div className="font-medium text-sm pr-5">{p.name}</div>
-                  <div className="text-xs text-muted-foreground">Age {p.age}</div>
+                  <div className="text-xs text-muted-foreground">{formatAge(p.age, p.age_months ?? 0)}</div>
                 </button>
               )
             })}

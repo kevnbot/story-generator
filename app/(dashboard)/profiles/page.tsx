@@ -17,7 +17,7 @@ export default async function ProfilesPage() {
   const { data: profiles } = userRow
     ? await service
         .from("kid_profiles")
-        .select("id, name, age, personality_tags, toy")
+        .select("id, name, age, age_months, gender, appearance, personality_tags, toy")
         .eq("account_id", userRow.account_id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })

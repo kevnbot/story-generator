@@ -32,8 +32,9 @@ export interface User {
 }
 
 export interface KidAppearance {
-  hair_color?: string
-  hair_style?: string
+  hair?: string         // free-text description (new)
+  hair_color?: string   // legacy field, kept for existing records
+  hair_style?: string   // legacy field, kept for existing records
   eye_color?: string
   skin_tone?: string
   glasses?: boolean
@@ -54,6 +55,8 @@ export interface KidProfile {
   account_id: string
   name: string
   age: number
+  age_months: number
+  gender?: string
   appearance: KidAppearance
   personality_tags: string[]
   toy: KidToy
