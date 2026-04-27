@@ -4,11 +4,18 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { deleteStory } from "@/app/actions/stories"
 
+interface StoryImage {
+  url: string
+  caption: string | null
+  scene_index: number
+}
+
 interface Story {
   id: string
   title: string
   content: string
   has_images: boolean
+  images?: StoryImage[]
   version_number: number
   parent_story_id: string | null
   credits_used: number
@@ -106,12 +113,23 @@ function StoryCard({ story, isVersion = false, onDelete }: {
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t pt-4">
-          <div className="prose prose-sm max-w-none leading-relaxed whitespace-pre-wrap text-foreground max-h-[60vh] overflow-y-auto">
+        <div className="px-4 pb-4 border-t pt-4 space-y-4">
+          <div className="prose prose-sm max-w-none leading-relaxed whitespace-pre-wrap text-foreground">
             {story.content}
           </div>
-          {story.has_images && story.generation_params && (
-            <p className="text-xs text-muted-foreground mt-3">This version includes AI-generated images.</p>
+          {story.images && story.images.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {[...story.images]
+                .sort((a, b) => a.scene_index - b.scene_index)
+                .map((img, i) => (
+                  <img
+                    key={i}
+                    src={img.url}
+                    alt={img.caption ?? `Illustration ${i + 1}`}
+                    className="rounded-lg w-full object-cover aspect-[4/3]"
+                  />
+                ))}
+            </div>
           )}
         </div>
       )}

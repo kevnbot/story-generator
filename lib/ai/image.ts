@@ -4,7 +4,7 @@ export async function generateStoryImage(prompt: string): Promise<string | null>
     return null
   }
 
-  const response = await fetch("https://fal.run/fal-ai/flux/schnell", {
+  const response = await fetch("https://fal.run/fal-ai/flux/dev", {
     method: "POST",
     headers: {
       "Authorization": `Key ${process.env.FAL_KEY}`,
@@ -13,7 +13,8 @@ export async function generateStoryImage(prompt: string): Promise<string | null>
     body: JSON.stringify({
       prompt,
       image_size: "landscape_4_3",
-      num_inference_steps: 4,
+      num_inference_steps: 28,
+      guidance_scale: 3.5,
       num_images: 1,
     }),
   })

@@ -8,8 +8,9 @@ import { cn } from "@/lib/utils"
 
 const navLinks = [
   { href: "/generate", label: "Generate", icon: "✨" },
-  { href: "/stories", label: "My Stories", icon: "📚" },
+  { href: "/library", label: "My Stories", icon: "📚" },
   { href: "/profiles", label: "Profiles", icon: "👧" },
+  { href: "/admin", label: "Admin", icon: "⚙️" },
 ]
 
 export function Nav({

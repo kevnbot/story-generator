@@ -17,7 +17,7 @@ export default async function StoriesPage() {
   const { data: stories } = userRow
     ? await service
         .from("stories")
-        .select("id, title, content, has_images, version_number, parent_story_id, credits_used, created_at, generation_params")
+        .select("id, title, content, has_images, images, version_number, parent_story_id, credits_used, created_at, generation_params")
         .eq("account_id", userRow.account_id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })

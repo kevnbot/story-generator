@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { generateStoryStream, extractStoryTitle } from "@/lib/ai/story"
+import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
 import { generateStoryImage } from "@/lib/ai/image"
-import { fillPromptTemplateMulti, joinNames } from "@/lib/ai/prompt-builder"
+import { fillPromptTemplateMulti, joinNames, buildCharacterAnchor } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
@@ -171,15 +171,27 @@ export async function POST(request: NextRequest) {
 
         const title = customTitle?.trim() || await extractStoryTitle(fullText, primaryName)
 
-        // Generate images in parallel if requested and FAL_KEY is available
+        // Generate images if requested and FAL_KEY is available.
+        // One Haiku call extracts consistent outfits + vivid per-page scenes from the finished story,
+        // then each image prompt leads with the scene so the model prioritises it.
         const images: StoryImage[] = []
+        let characterAnchor = ""
+        let pagePrompts: string[] = []
+
         if (imagesEnabled) {
           send({ type: "status", message: `Generating ${lengthConfig.imageCount} images...` })
-          const urls = await Promise.all(
-            Array.from({ length: lengthConfig.imageCount }, (_, i) =>
-              generateStoryImage(`${imagePrompt} (page ${i + 1} of ${lengthConfig.imageCount})`)
-            )
-          )
+
+          const storyPages = splitStoryPages(fullText)
+          const { outfits, scenes } = await extractStoryVisuals(storyPages, profiles)
+          characterAnchor = buildCharacterAnchor(profiles, outfits)
+          const stylePrefix = artStyle?.prompt_prefix ? `${artStyle.prompt_prefix}, ` : ""
+
+          pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
+            const scene = scenes[i] ?? scenes[scenes.length - 1] ?? ""
+            return `${stylePrefix}children's picture book illustration. ${scene}. Characters: ${characterAnchor}. Consistent character design, same outfit and hair in every image.`
+          })
+
+          const urls = await Promise.all(pagePrompts.map(generateStoryImage))
           urls.forEach((url, i) => {
             if (url) images.push({ url, caption: null, scene_index: i })
           })
@@ -207,9 +219,11 @@ export async function POST(request: NextRequest) {
               prompt_summary: profiles.map(p => p.prompt_summary).join(" "),
               system_prompt: systemPrompt,
               user_prompt: userPrompt,
-              image_prompt: imagePrompt,
-              model: "claude-opus-4-7",
-              image_model: imagesEnabled ? "fal-ai/flux/schnell" : "",
+              image_prompt: characterAnchor,
+              character_anchor: characterAnchor || undefined,
+              image_prompts: pagePrompts.length > 0 ? pagePrompts : undefined,
+              model: "claude-sonnet-4-6",
+              image_model: imagesEnabled ? "fal-ai/flux/dev" : "",
             },
             credits_used: creditsNeeded,
           })
@@ -237,6 +251,7 @@ export async function POST(request: NextRequest) {
         send({ type: "done", storyId: story?.id ?? null, title, hasImages: images.length > 0 })
         controller.close()
       } catch (err) {
+        console.error("[generate-story] stream error:", err)
         await service
           .from("generation_jobs")
           .update({ status: "failed", error_message: String(err) })

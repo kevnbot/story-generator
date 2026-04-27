@@ -107,6 +107,8 @@ export interface GenerationParams {
   system_prompt: string
   user_prompt: string
   image_prompt: string
+  character_anchor?: string  // consistent character description prepended to every image prompt
+  image_prompts?: string[]   // full per-page prompts sent to the image model
   model: string
   image_model: string
 }
