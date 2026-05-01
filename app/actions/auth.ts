@@ -34,7 +34,13 @@ export async function signup(
   if (password.length < 8) return "Password must be at least 8 characters."
 
   const supabase = await createClient()
-  const { data, error } = await supabase.auth.signUp({ email, password })
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`,
+    },
+  })
 
   if (error) return error.message
   if (!data.user) return "Signup failed. Please try again."
