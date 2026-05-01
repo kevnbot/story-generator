@@ -121,6 +121,31 @@ export async function applyArtStyleToReference(
   return referenceUrl
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function falPostWithRetry(
+  model: string,
+  body: Record<string, unknown>,
+  maxAttempts = 3,
+  delayMs = 2000
+): Promise<{ ok: boolean; data: Record<string, unknown> | null; errorText: string }> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await falPost(model, body)
+    if (response.ok) {
+      const data = await response.json()
+      return { ok: true, data, errorText: "" }
+    }
+    const errorText = await response.text().catch(() => `HTTP ${response.status}`)
+    const isRetryable = response.status === 429 || response.status >= 500
+    if (!isRetryable || attempt === maxAttempts) {
+      return { ok: false, data: null, errorText }
+    }
+    console.warn(`fal.ai ${model} attempt ${attempt} failed (${response.status}), retrying in ${delayMs}ms…`)
+    await sleep(delayMs)
+  }
+  return { ok: false, data: null, errorText: "max retries exceeded" }
+}
+
 // Uses FLUX Kontext when a reference image is available for character consistency,
 // falls back to standard FLUX/dev otherwise.
 export async function generateStoryImageWithReference(
@@ -134,7 +159,7 @@ export async function generateStoryImageWithReference(
   }
 
   if (referenceImageUrl) {
-    const response = await falPost("fal-ai/flux-pro/kontext", {
+    const { ok, data, errorText } = await falPostWithRetry("fal-ai/flux-pro/kontext", {
       prompt,
       negative_prompt: NEGATIVE_PROMPT,
       image_url: referenceImageUrl,
@@ -144,17 +169,16 @@ export async function generateStoryImageWithReference(
       num_images: 1,
     })
 
-    if (response.ok) {
-      const data = await response.json()
-      const url = data.images?.[0]?.url ?? null
+    if (ok) {
+      const url = (data as Record<string, unknown> & { images?: { url: string }[] })?.images?.[0]?.url ?? null
       if (url) return url
+    } else {
+      console.error("fal.ai kontext error, falling back to standard generation:", errorText)
     }
-
-    console.error("fal.ai kontext error, falling back to standard generation:", await response.text().catch(() => ""))
   }
 
   // Fallback: standard FLUX/dev without reference
-  const response = await falPost("fal-ai/flux/dev", {
+  const { ok, data, errorText } = await falPostWithRetry("fal-ai/flux/dev", {
     prompt,
     negative_prompt: NEGATIVE_PROMPT,
     image_size: "landscape_4_3",
@@ -164,13 +188,12 @@ export async function generateStoryImageWithReference(
     ...(seed !== undefined ? { seed } : {}),
   })
 
-  if (!response.ok) {
-    console.error("fal.ai error:", await response.text())
+  if (!ok) {
+    console.error("fal.ai flux/dev error:", errorText)
     return null
   }
 
-  const data = await response.json()
-  return data.images?.[0]?.url ?? null
+  return (data as Record<string, unknown> & { images?: { url: string }[] })?.images?.[0]?.url ?? null
 }
 
 export async function generateStoryImage(prompt: string): Promise<string | null> {
