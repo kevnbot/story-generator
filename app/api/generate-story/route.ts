@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
-import { generateStoryImage } from "@/lib/ai/image"
-import { fillPromptTemplateMulti, joinNames, buildCharacterAnchor } from "@/lib/ai/prompt-builder"
+import { generateStoryImageWithReference, generateGroupReferenceImage, applyArtStyleToReference } from "@/lib/ai/image"
+import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
@@ -113,22 +113,65 @@ export async function POST(request: NextRequest) {
   }
 
   const t = template as StoryTemplate
-  let userPrompt = fillPromptTemplateMulti(t.user_prompt_template, profiles)
-  const filledImagePrompt = fillPromptTemplateMulti(t.image_prompt_template, profiles)
-  const imagePrompt = artStyle?.prompt_prefix
-    ? `${artStyle.prompt_prefix} ${filledImagePrompt}`
-    : filledImagePrompt
   const systemPrompt = t.system_prompt
 
-  // Inject page count so Claude structures the story correctly
-  userPrompt = `${userPrompt}\n\nWrite this as exactly ${lengthConfig.pages} pages. Each page should be a short paragraph of 2-3 sentences suitable for a children's picture book.`
+  // Age-calibrated language guidance based on the youngest child in the story
+  const youngestAge = Math.min(...profiles.map(p => p.age))
+  const ageGuidance = youngestAge <= 4
+    ? "Use very simple words and short sentences a toddler can follow. Sensory details, gentle repetition, and playful sounds work well. Each page should feel like it can be read in one breath."
+    : youngestAge <= 7
+    ? "Use simple, clear language with short sentences. Stick to concrete actions and feelings. Avoid complex vocabulary or abstract ideas."
+    : "You can use richer vocabulary and longer sentences. Include some emotional depth and a satisfying narrative arc."
 
-  // Inject the user's story description
+  const primaryName = profiles.length === 1
+    ? profiles[0].name
+    : joinNames(profiles.map(p => p.name))
+
+  // Character context — narrative-relevant fields only (name, age, gender, personality, toy).
+  // Appearance is intentionally omitted: it doesn't affect story writing and is handled
+  // separately by reference images for illustrations.
+  const characterLines = profiles.map(p => {
+    const attrs: string[] = []
+    if (p.gender) attrs.push(p.gender)
+    attrs.push(`${p.age} years old`)
+    if (p.personality_tags.length > 0) attrs.push(p.personality_tags.join(", "))
+    const toyName = p.toy?.name && p.toy.name !== "their favorite toy" ? p.toy.name : null
+    if (toyName) {
+      const toyFull = p.toy.description ? `${toyName} (${p.toy.description})` : toyName
+      attrs.push(`toy: ${toyFull}`)
+    }
+    return `- ${p.name}: ${attrs.join(", ")}`
+  }).join("\n")
+
+  const characterLabel = profiles.length === 1 ? "Main character" : "Main characters"
+
+  const personalityDirective = profiles.length === 1 && profiles[0].personality_tags.length > 0
+    ? `\n\nLet ${profiles[0].name}'s personality (${profiles[0].personality_tags.join(", ")}) actively drive their choices and reactions throughout the story — not just appear in passing, but shape how they approach every problem and moment.`
+    : profiles.length > 1
+    ? `\n\nLet each character's personality actively drive their choices throughout the story — not just appear in passing, but shape how they approach problems and interact with each other.`
+    : ""
+
+  // Story request (what the user wants) comes before format rules so Claude
+  // understands the intent before receiving structural constraints.
+  let userPrompt = `${characterLabel}:\n${characterLines}`
+
   if (storyDescription?.trim()) {
     userPrompt = `${userPrompt}\n\nStory request: ${storyDescription.trim()}`
   }
 
-  // Inject revision context when creating a version with feedback
+  userPrompt = `${userPrompt}
+
+---
+
+Begin your response with "Title: [your story title]" on its own line, then write the story.
+
+Write exactly ${lengthConfig.pages} pages. Separate each page with a line containing only "--- Page N ---" (e.g. "--- Page 1 ---", "--- Page 2 ---"). Each page should be 2-3 sentences.
+
+${ageGuidance}
+
+Each page must describe one clear visual moment — where the characters are, what they are doing, and what is physically around them. Avoid pages that are only internal thoughts, dialogue, or abstract feelings with no visual scene.${personalityDirective}`
+
+  // Revision context when creating a new version with feedback
   if (parentResult.data?.content && feedback?.trim()) {
     userPrompt = `${userPrompt}\n\n---\n\nPrevious version of this story for reference:\n\n${parentResult.data.content}\n\n---\n\nFeedback and changes to incorporate in this new version: ${feedback.trim()}`
   }
@@ -165,11 +208,13 @@ export async function POST(request: NextRequest) {
           send({ type: "chunk", text: chunk })
         }
 
-        const primaryName = profiles.length === 1
-          ? profiles[0].name
-          : joinNames(profiles.map(p => p.name))
-
-        const title = customTitle?.trim() || await extractStoryTitle(fullText, primaryName)
+        // Extract title from Claude's output; fall back to a separate Haiku call if absent
+        const titleLineMatch = fullText.match(/^Title:\s*(.+?)(?:\r?\n|$)/im)
+        const embeddedTitle = titleLineMatch?.[1]?.trim().replace(/^["']|["']$/g, "") ?? ""
+        if (embeddedTitle) {
+          fullText = fullText.replace(/^Title:\s*.+?(?:\r?\n)+/im, "").trim()
+        }
+        const title = customTitle?.trim() || embeddedTitle || await extractStoryTitle(fullText, primaryName)
 
         // Generate images if requested and FAL_KEY is available.
         // One Haiku call extracts consistent outfits + vivid per-page scenes from the finished story,
@@ -177,21 +222,54 @@ export async function POST(request: NextRequest) {
         const images: StoryImage[] = []
         let characterAnchor = ""
         let pagePrompts: string[] = []
+        let visualsPrompt = ""
 
         if (imagesEnabled) {
-          send({ type: "status", message: `Generating ${lengthConfig.imageCount} images...` })
+          send({ type: "status", message: "Planning illustrations…" })
 
           const storyPages = splitStoryPages(fullText)
-          const { outfits, scenes } = await extractStoryVisuals(storyPages, profiles)
+          const referenceProfileIds = new Set(profiles.filter(p => p.reference_image_url).map(p => p.id))
+          const { outfits, scenes, prompt: vp } = await extractStoryVisuals(storyPages, profiles, referenceProfileIds)
+          visualsPrompt = vp
           characterAnchor = buildCharacterAnchor(profiles, outfits)
-          const stylePrefix = artStyle?.prompt_prefix ? `${artStyle.prompt_prefix}, ` : ""
+          // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
+          // double-comma artifacts when composed into the full image prompt.
+          const styleDescription = artStyle?.prompt_prefix
+            ? artStyle.prompt_prefix.replace(/[,\s]+$/, "")
+            : "children's picture book illustration"
 
+          // Build a group reference image from all characters' stored profile references,
+          // then convert it to the selected art style. This styled image becomes the
+          // Kontext anchor for every page — so character consistency AND art style are
+          // both carried through without either fighting the other.
+          send({ type: "status", message: "Preparing character references…" })
+          const groupReferenceUrl = await generateGroupReferenceImage(profiles, outfits)
+
+          // Apply the selected art style to the group reference before using it as the
+          // Kontext anchor. Without this step, Kontext would maintain the neutral FLUX/dev
+          // style of the profile reference images and ignore the text-based style request.
+          // Falls back to the unstyled reference if the style transfer call fails.
+          send({ type: "status", message: "Applying art style…" })
+          const referenceImageUrl = (groupReferenceUrl && artStyle?.prompt_prefix)
+            ? await applyArtStyleToReference(groupReferenceUrl, styleDescription)
+            : groupReferenceUrl
+
+          // Fixed seed for the fallback FLUX/dev path so character features stay consistent
+          // across pages when no Kontext reference image is available
+          const storySeed = Math.floor(Math.random() * 2147483647)
+
+          send({ type: "status", message: `Generating ${lengthConfig.imageCount} images…` })
+          const humanRule = "All characters are human children. Toys are separate stuffed objects held in hands — children have no animal features, fur, tails, or ears."
           pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
             const scene = scenes[i] ?? scenes[scenes.length - 1] ?? ""
-            return `${stylePrefix}children's picture book illustration. ${scene}. Characters: ${characterAnchor}. Consistent character design, same outfit and hair in every image.`
+            if (referenceImageUrl) {
+              const slimAnchor = buildCharacterAnchorSlim(profiles, outfits, referenceProfileIds)
+              return `${scene}. ${styleDescription}. ${slimAnchor}. Maintain all characters' exact appearances from the reference image. ${humanRule}`
+            }
+            return `${scene}. ${styleDescription}. ${characterAnchor}. ${humanRule} Consistent character design throughout.`
           })
 
-          const urls = await Promise.all(pagePrompts.map(generateStoryImage))
+          const urls = await Promise.all(pagePrompts.map(p => generateStoryImageWithReference(p, referenceImageUrl, storySeed)))
           urls.forEach((url, i) => {
             if (url) images.push({ url, caption: null, scene_index: i })
           })
@@ -221,8 +299,10 @@ export async function POST(request: NextRequest) {
               user_prompt: userPrompt,
               image_prompt: characterAnchor,
               character_anchor: characterAnchor || undefined,
+              visuals_prompt: pagePrompts.length > 0 ? visualsPrompt : undefined,
               image_prompts: pagePrompts.length > 0 ? pagePrompts : undefined,
               model: "claude-sonnet-4-6",
+              visuals_model: imagesEnabled ? "claude-sonnet-4-6" : undefined,
               image_model: imagesEnabled ? "fal-ai/flux/dev" : "",
             },
             credits_used: creditsNeeded,

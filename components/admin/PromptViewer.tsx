@@ -79,6 +79,10 @@ function StoryPromptCard({ story }: { story: Story }) {
             <PromptBlock label="Character Anchor" content={params.character_anchor} />
           )}
 
+          {params?.visuals_prompt && (
+            <PromptBlock label="Visuals Extraction (Haiku)" content={params.visuals_prompt} />
+          )}
+
           {params?.image_prompts && params.image_prompts.length > 0 && (
             <div className="space-y-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -91,9 +95,14 @@ function StoryPromptCard({ story }: { story: Story }) {
           )}
 
           <div className="flex flex-wrap gap-3 pt-1 text-[11px] text-muted-foreground">
-            <span>Story model: <code className="font-mono">{params?.model || "—"}</code></span>
-            <span>Image model: <code className="font-mono">{params?.image_model || "—"}</code></span>
-            <span>Story ID: <code className="font-mono">{story.id}</code></span>
+            <span>Story: <code className="font-mono">{params?.model || "—"}</code></span>
+            {params?.visuals_prompt && (
+              <span>Visuals: <code className="font-mono">{params?.visuals_model ?? "claude-sonnet-4-6"}</code></span>
+            )}
+            {params?.image_model && (
+              <span>Images: <code className="font-mono">{params.image_model}</code></span>
+            )}
+            <span>ID: <code className="font-mono">{story.id}</code></span>
           </div>
         </div>
       )}

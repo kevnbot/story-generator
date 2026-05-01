@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ChevronLeft, ChevronRight, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, ScrollText } from "lucide-react"
 import { Story, StoryImage } from "@/types"
+import PromptModal from "./PromptModal"
 
 // ─── Page model ───────────────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ export default function BookReader({ story }: { story: Story }) {
   const pages = buildPages(story.content, story.images ?? [])
   const total = pages.length + 1 // 0 = title, 1..n = content
   const [current, setCurrent] = useState(0)
+  const [showPrompts, setShowPrompts] = useState(false)
 
   const prev = useCallback(() => setCurrent((i) => Math.max(0, i - 1)), [])
   const next = useCallback(() => setCurrent((i) => Math.min(total - 1, i + 1)), [total])
@@ -215,15 +217,31 @@ export default function BookReader({ story }: { story: Story }) {
           </button>
         </div>
 
-        {/* Download PDF */}
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
-        >
-          <Download className="h-4 w-4" />
-          Download PDF
-        </button>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </button>
+          <button
+            onClick={() => setShowPrompts(true)}
+            className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
+          >
+            <ScrollText className="h-4 w-4" />
+            View Prompt
+          </button>
+        </div>
       </div>
+
+      {showPrompts && story.generation_params && (
+        <PromptModal
+          params={story.generation_params}
+          onClose={() => setShowPrompts(false)}
+        />
+      )}
 
       {/* ── Print layout (hidden on screen, rendered when printing) ── */}
       <div id="print-layout">

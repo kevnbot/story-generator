@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
-import { Story } from "@/types"
+import type { Story, KidProfile, StoryTemplate } from "@/types"
 import BookReader from "@/components/library/BookReader"
+import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
 
 export default async function StoryDetailPage({
   params,
@@ -15,14 +16,42 @@ export default async function StoryDetailPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: story } = await supabase
+  const { data: row } = await supabase
     .from("stories")
-    .select("*")
+    .select(`
+      *,
+      story_templates ( system_prompt, user_prompt_template ),
+      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, deleted_at, created_at, updated_at, account_id )
+    `)
     .eq("id", storyId)
     .is("deleted_at", null)
     .single()
 
-  if (!story) notFound()
+  if (!row) notFound()
+
+  const r = row as typeof row & {
+    story_templates: Pick<StoryTemplate, "system_prompt" | "user_prompt_template"> | null
+    kid_profiles: KidProfile | null
+  }
+
+  let generation_params = (r.generation_params ?? {}) as Story["generation_params"]
+
+  if (!generation_params.system_prompt && r.story_templates) {
+    generation_params = { ...generation_params, system_prompt: r.story_templates.system_prompt }
+  }
+
+  if (!generation_params.user_prompt && r.story_templates && r.kid_profiles) {
+    generation_params = {
+      ...generation_params,
+      user_prompt: fillPromptTemplateMulti(r.story_templates.user_prompt_template, [r.kid_profiles]),
+    }
+  }
+
+  if (!generation_params.kid_names?.length && r.kid_profiles) {
+    generation_params = { ...generation_params, kid_names: [r.kid_profiles.name] }
+  }
+
+  const story: Story = { ...(r as unknown as Story), generation_params }
 
   return (
     <div className="mx-auto max-w-xl px-4">
@@ -41,7 +70,7 @@ export default async function StoryDetailPage({
         </Link>
       </div>
 
-      <BookReader story={story as Story} />
+      <BookReader story={story} />
     </div>
   )
 }

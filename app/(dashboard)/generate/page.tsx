@@ -50,7 +50,7 @@ export default async function GeneratePage({
       .from("art_styles")
       .select("id, name")
       .eq("is_active", true)
-      .order("name", { ascending: true }),
+      .order("sort_order", { ascending: true }),
   ])
 
   const parent = parentResult.data
