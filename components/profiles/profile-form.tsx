@@ -12,7 +12,7 @@ interface EditProfile {
   age: number
   age_months: number
   gender?: string
-  appearance: { hair?: string; hair_color?: string; eye_color?: string }
+  appearance: { hair?: string; hair_color?: string; eye_color?: string; skin_tone?: string }
   personality_tags: string[]
   toy: { name: string; description?: string; type?: string }
 }
@@ -74,6 +74,13 @@ export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
         <div className="space-y-1.5">
           <Label htmlFor="eye_color">Eye color</Label>
           <Input id="eye_color" name="eye_color" placeholder="blue" defaultValue={profile?.appearance?.eye_color} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="skin_tone">Skin tone</Label>
+          <Input id="skin_tone" name="skin_tone" placeholder="light, medium brown, dark, olive…" defaultValue={profile?.appearance?.skin_tone} />
         </div>
       </div>
 

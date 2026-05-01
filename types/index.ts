@@ -61,6 +61,7 @@ export interface KidProfile {
   personality_tags: string[]
   toy: KidToy
   prompt_summary: string
+  reference_image_url: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string
@@ -108,6 +109,8 @@ export interface GenerationParams {
   user_prompt: string
   image_prompt: string
   character_anchor?: string  // consistent character description prepended to every image prompt
+  visuals_prompt?: string    // prompt sent to Sonnet to extract outfits + scenes
+  visuals_model?: string     // model used for visuals extraction
   image_prompts?: string[]   // full per-page prompts sent to the image model
   model: string
   image_model: string

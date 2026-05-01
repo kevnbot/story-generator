@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
-import type { KidAppearance, KidToy } from "@/types"
+import { generateProfileReferenceImage } from "@/lib/ai/image"
+import type { KidAppearance, KidToy, KidProfile } from "@/types"
 
 function parseProfileFormData(formData: FormData): {
   error: string | null
@@ -36,6 +37,7 @@ function parseProfileFormData(formData: FormData): {
   const appearance: KidAppearance = {
     hair: (formData.get("hair") as string) || undefined,
     eye_color: (formData.get("eye_color") as string) || undefined,
+    skin_tone: (formData.get("skin_tone") as string) || undefined,
   }
 
   const personalityTags = personalityRaw
@@ -70,7 +72,7 @@ export async function createProfile(prevState: string | null, formData: FormData
 
   if (!userRow) return "User account not found"
 
-  const { error } = await service.from("kid_profiles").insert({
+  const { data: inserted, error } = await service.from("kid_profiles").insert({
     account_id: userRow.account_id,
     name,
     age,
@@ -80,9 +82,16 @@ export async function createProfile(prevState: string | null, formData: FormData
     personality_tags: personalityTags,
     toy,
     prompt_summary: promptSummary,
-  })
+  }).select("*").single()
 
   if (error) return error.message
+
+  if (inserted) {
+    const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
+    if (referenceUrl) {
+      await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", inserted.id)
+    }
+  }
 
   revalidatePath("/profiles")
   revalidatePath("/generate")
@@ -109,7 +118,7 @@ export async function updateProfile(profileId: string, prevState: string | null,
 
   if (!userRow) return "User account not found"
 
-  const { error } = await service
+  const { data: updated, error } = await service
     .from("kid_profiles")
     .update({
       name,
@@ -125,8 +134,17 @@ export async function updateProfile(profileId: string, prevState: string | null,
     .eq("id", profileId)
     .eq("account_id", userRow.account_id)
     .is("deleted_at", null)
+    .select("*")
+    .single()
 
   if (error) return error.message
+
+  if (updated) {
+    const referenceUrl = await generateProfileReferenceImage(updated as KidProfile).catch(() => null)
+    if (referenceUrl) {
+      await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", profileId)
+    }
+  }
 
   revalidatePath("/profiles")
   revalidatePath("/generate")

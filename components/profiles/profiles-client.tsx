@@ -12,9 +12,10 @@ interface Profile {
   age: number
   age_months: number
   gender?: string
-  appearance: { hair?: string; hair_color?: string; eye_color?: string }
+  appearance: { hair?: string; hair_color?: string; eye_color?: string; skin_tone?: string }
   personality_tags: string[]
   toy: { name: string; description?: string; type?: string }
+  reference_image_url?: string | null
 }
 
 export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
@@ -62,46 +63,78 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center justify-between p-4 rounded-xl border bg-card">
-                  <div>
-                    <div className="font-medium">
-                      {profile.name}, {formatAge(profile.age, profile.age_months ?? 0)}
-                      {profile.gender ? <span className="ml-1 text-muted-foreground font-normal">· {profile.gender}</span> : null}
+                <div className="rounded-xl border bg-card overflow-hidden">
+                  <div className="flex items-center gap-4 p-4">
+                    {/* Reference image */}
+                    <div className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-muted flex items-center justify-center border">
+                      {profile.reference_image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={profile.reference_image_url}
+                          alt={`${profile.name} reference`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-2xl font-bold text-muted-foreground select-none">
+                          {profile.name[0].toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                    {profile.toy?.name && profile.toy.name !== "their favorite toy" && (
-                      <div className="text-sm text-muted-foreground">
-                        Toy: {profile.toy.name}
-                        {(profile.toy.description || profile.toy.type)
-                          ? ` — ${profile.toy.description ?? profile.toy.type}`
-                          : ""}
+
+                    {/* Profile details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium">
+                        {profile.name}, {formatAge(profile.age, profile.age_months ?? 0)}
+                        {profile.gender ? <span className="ml-1 text-muted-foreground font-normal">· {profile.gender}</span> : null}
                       </div>
-                    )}
-                    {profile.personality_tags.length > 0 && (
-                      <div className="text-sm text-muted-foreground mt-0.5">
-                        {profile.personality_tags[0]}
-                      </div>
-                    )}
+                      {profile.toy?.name && profile.toy.name !== "their favorite toy" && (
+                        <div className="text-sm text-muted-foreground">
+                          Toy: {profile.toy.name}
+                          {(profile.toy.description || profile.toy.type)
+                            ? ` — ${profile.toy.description ?? profile.toy.type}`
+                            : ""}
+                        </div>
+                      )}
+                      {profile.personality_tags.length > 0 && (
+                        <div className="text-sm text-muted-foreground mt-0.5">
+                          {profile.personality_tags[0]}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setShowForm(false); setEditingId(profile.id) }}
+                        disabled={pending}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(profile.id)}
+                        disabled={pending}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { setShowForm(false); setEditingId(profile.id) }}
-                      disabled={pending}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(profile.id)}
-                      disabled={pending}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      Remove
-                    </Button>
-                  </div>
+
+                  {/* Reference image hint */}
+                  {profile.reference_image_url ? (
+                    <div className="px-4 pb-3 text-xs text-muted-foreground">
+                      This reference image is used to keep {profile.name} looking consistent across story illustrations. Edit the profile if it doesn&apos;t look right.
+                    </div>
+                  ) : (
+                    <div className="px-4 pb-3 text-xs text-muted-foreground">
+                      A reference image will be generated when you save this profile with image generation enabled.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
