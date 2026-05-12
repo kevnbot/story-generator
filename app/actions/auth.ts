@@ -1,8 +1,24 @@
 "use server"
 
 import { redirect } from "next/navigation"
+import { sanitizeInternalRedirect } from "@/lib/auth/redirects"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { config } from "@/lib/config"
+
+export type AuthFormState = {
+  error?: string
+  message?: string
+  status?: "success"
+} | null
+
+const GENERIC_RESET_MESSAGE =
+  "If an account exists for that email, we sent password reset instructions."
+const GENERIC_VERIFY_MESSAGE =
+  "If that email is waiting for verification, we sent a new confirmation link."
+
+function appUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")
+}
 
 export async function login(
   prevState: string | null,
@@ -10,7 +26,7 @@ export async function login(
 ): Promise<string | null> {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
-  const redirectTo = (formData.get("redirectTo") as string) || "/generate"
+  const redirectTo = sanitizeInternalRedirect(formData.get("redirectTo"), "/generate")
 
   if (!email || !password) return "Email and password are required."
 
@@ -38,7 +54,7 @@ export async function signup(
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`,
+      emailRedirectTo: `${appUrl()}/api/auth/callback`,
     },
   })
 
@@ -94,4 +110,77 @@ export async function logout() {
   const supabase = await createClient()
   await supabase.auth.signOut()
   redirect("/login")
+}
+
+export async function requestPasswordReset(
+  prevState: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const email = (formData.get("email") as string)?.trim()
+
+  if (!email) return { error: "Email is required." }
+
+  const supabase = await createClient()
+  await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${appUrl()}/api/auth/callback?next=/reset-password`,
+  })
+
+  return {
+    status: "success",
+    message: GENERIC_RESET_MESSAGE,
+  }
+}
+
+export async function resendVerificationEmail(
+  prevState: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const email = (formData.get("email") as string)?.trim()
+
+  if (!email) return { error: "Email is required." }
+
+  const supabase = await createClient()
+  await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: `${appUrl()}/api/auth/callback`,
+    },
+  })
+
+  return {
+    status: "success",
+    message: GENERIC_VERIFY_MESSAGE,
+  }
+}
+
+export async function updatePassword(
+  prevState: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const password = formData.get("password") as string
+  const confirmPassword = formData.get("confirmPassword") as string
+  const flow = formData.get("flow") === "recovery" ? "recovery" : "account"
+
+  if (!password || !confirmPassword) return { error: "Password and confirmation are required." }
+  if (password.length < 8) return { error: "Password must be at least 8 characters." }
+  if (password !== confirmPassword) return { error: "Passwords do not match." }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    if (flow === "recovery") redirect("/forgot-password?error=expired")
+    return { error: "You need to be signed in to update your password." }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) return { error: error.message }
+
+  if (flow === "recovery") {
+    await supabase.auth.signOut()
+    redirect("/login?message=password_updated")
+  }
+
+  redirect("/account/security?message=password_updated")
 }

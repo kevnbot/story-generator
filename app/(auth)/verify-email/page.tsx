@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { ResendVerificationForm } from "@/components/auth/resend-verification-form"
 
 export default function VerifyEmailPage() {
   return (
@@ -9,6 +10,9 @@ export default function VerifyEmailPage() {
       <p className="text-sm text-muted-foreground mb-6">
         We sent a confirmation link to your email address. Click it to activate your account.
       </p>
+      <div className="mb-4">
+        <ResendVerificationForm />
+      </div>
       <Button asChild variant="outline" className="w-full">
         <Link href="/login">Back to sign in</Link>
       </Button>

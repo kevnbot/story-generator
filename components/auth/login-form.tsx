@@ -7,7 +7,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export function LoginForm({ redirectTo }: { redirectTo?: string }) {
+export function LoginForm({
+  redirectTo,
+  initialError,
+  message,
+}: {
+  redirectTo?: string
+  initialError?: string
+  message?: string
+}) {
   const [error, action, pending] = useActionState(login, null)
 
   return (
@@ -23,6 +31,21 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
           <Label htmlFor="password">Password</Label>
           <Input id="password" name="password" type="password" placeholder="••••••••" required autoComplete="current-password" />
         </div>
+        <div className="text-right">
+          <Link href="/forgot-password" className="text-sm text-brand-600 font-medium hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        {message && (
+          <p className="text-sm text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2">
+            {message}
+          </p>
+        )}
+        {initialError && !error && (
+          <p className="text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-3 py-2">
+            {initialError}
+          </p>
+        )}
         {error && (
           <p className="text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-3 py-2">
             {error}

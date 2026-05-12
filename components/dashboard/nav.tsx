@@ -10,6 +10,7 @@ const navLinks = [
   { href: "/generate", label: "Generate", icon: "✨" },
   { href: "/library", label: "My Stories", icon: "📚" },
   { href: "/profiles", label: "Profiles", icon: "👧" },
+  { href: "/account/security", label: "Account", icon: "🔒" },
 ]
 
 export function Nav({
