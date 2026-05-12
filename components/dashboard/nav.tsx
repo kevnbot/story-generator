@@ -15,11 +15,16 @@ const navLinks = [
 
 export function Nav({
   credits,
+  isAdmin,
 }: {
   userName: string | null
   credits: number
+  isAdmin: boolean
 }) {
   const pathname = usePathname()
+  const links = isAdmin
+    ? [...navLinks, { href: "/admin", label: "Admin", icon: "🛠️" }]
+    : navLinks
 
   return (
     <header className="border-b border-border bg-white sticky top-0 z-10">
@@ -29,7 +34,7 @@ export function Nav({
           <span className="hidden sm:inline">Story Generator</span>
         </Link>
         <nav className="flex items-center gap-1 flex-1">
-          {navLinks.map(({ href, label, icon }) => (
+          {links.map(({ href, label, icon }) => (
             <Link
               key={href}
               href={href}

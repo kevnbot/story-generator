@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { sanitizeInternalRedirect } from "@/lib/auth/redirects"
+import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 
 const PUBLIC_ROUTES = [
   "/login",
@@ -71,8 +72,8 @@ export async function proxy(request: NextRequest) {
 
   // Guard admin routes
   if (ADMIN_ROUTES.some(r => pathname.startsWith(r)) && user) {
-    const adminIds = (process.env.ADMIN_USER_IDS || "").split(",").map(s => s.trim())
-    if (!adminIds.includes(user.id)) {
+    const hasAdminAccess = await isPlatformAdmin(user.id)
+    if (!hasAdminAccess) {
       const homeUrl = request.nextUrl.clone()
       homeUrl.pathname = "/generate"
       return NextResponse.redirect(homeUrl)

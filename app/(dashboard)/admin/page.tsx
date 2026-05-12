@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import type { Story, KidProfile, StoryTemplate } from "@/types"
 import PromptViewer from "@/components/admin/PromptViewer"
 import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
+import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 
 export const metadata = {
   title: "Prompt Log | Admin",
@@ -12,28 +13,20 @@ export default async function AdminPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
+  if (!(await isPlatformAdmin(user.id))) redirect("/generate")
 
   const service = createServiceClient()
 
-  const { data: userRow } = await service
-    .from("users")
-    .select("account_id")
-    .eq("id", user.id)
-    .single()
-
-  const { data: rows } = userRow
-    ? await service
-        .from("stories")
-        .select(`
-          id, title, has_images, created_at, generation_params,
-          story_templates ( system_prompt, user_prompt_template ),
-          kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, deleted_at, created_at, updated_at, account_id )
-        `)
-        .eq("account_id", userRow.account_id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(50)
-    : { data: [] }
+  const { data: rows } = await service
+    .from("stories")
+    .select(`
+      id, title, has_images, created_at, generation_params,
+      story_templates ( system_prompt, user_prompt_template ),
+      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, deleted_at, created_at, updated_at, account_id )
+    `)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(50)
 
   // For stories missing stored prompts, reconstruct from the template and primary profile.
   // The reconstructed user_prompt omits any injected page-count / story-description / feedback

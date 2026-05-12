@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { Nav } from "@/components/dashboard/nav"
+import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -23,9 +24,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
         .single()
     : { data: null }
 
+  const hasAdminAccess = await isPlatformAdmin(user.id)
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Nav userName={profile?.display_name ?? null} credits={account?.credit_balance ?? 0} />
+      <Nav
+        userName={profile?.display_name ?? null}
+        credits={account?.credit_balance ?? 0}
+        isAdmin={hasAdminAccess}
+      />
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">{children}</main>
     </div>
   )

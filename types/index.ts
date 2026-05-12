@@ -180,6 +180,13 @@ export interface AppConfig {
   updated_at: string
 }
 
+export interface PlatformAdmin {
+  user_id: string
+  granted_by: string | null
+  created_at: string
+  revoked_at: string | null
+}
+
 // ─── API response types ───────────────────────────────────────────────────────
 
 export interface ApiSuccess<T = void> {
