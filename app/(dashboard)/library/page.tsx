@@ -1,7 +1,8 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Story, KidProfile, StoryTemplate } from "@/types"
 import StoryLibrary from "@/components/library/StoryLibrary"
+import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage/images"
 
 export const metadata = {
   title: "Library | Story Generator",
@@ -37,11 +38,20 @@ export default async function LibraryPage() {
   const stories: Story[]         = storiesRes.data  ?? []
   const profiles: KidProfile[]   = profilesRes.data ?? []
   const templates = (templatesRes.data ?? []) as StoryTemplate[]
+  const service = createServiceClient()
+  const signedUrlsByPath = await createSignedImageUrlsMap(
+    service,
+    stories.flatMap((story) => (story.images ?? []).map((image) => image.path).filter((p): p is string => Boolean(p)))
+  )
+  const resolvedStories = stories.map((story) => ({
+    ...story,
+    images: resolveStoryImagesForUi(story.images ?? [], signedUrlsByPath),
+  }))
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       <StoryLibrary
-        stories={stories}
+        stories={resolvedStories}
         profiles={profiles}
         templates={templates}
       />

@@ -22,7 +22,7 @@ export default async function AdminPage() {
     .select(`
       id, title, has_images, created_at, generation_params,
       story_templates ( system_prompt, user_prompt_template ),
-      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, deleted_at, created_at, updated_at, account_id )
+      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, reference_image_path, reference_image_url, deleted_at, created_at, updated_at, account_id )
     `)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })

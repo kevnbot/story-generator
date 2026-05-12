@@ -29,6 +29,7 @@ function profile(overrides: Partial<KidProfile> = {}): KidProfile {
       description: "a silver stuffed bear",
     },
     prompt_summary: "Luna is curious.",
+    reference_image_path: null,
     reference_image_url: null,
     deleted_at: null,
     created_at: "2026-05-01T00:00:00.000Z",

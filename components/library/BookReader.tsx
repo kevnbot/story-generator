@@ -9,7 +9,11 @@ import PromptModal from "./PromptModal"
 
 interface Page {
   text: string
-  image: StoryImage | null
+  image: StoryImageWithUrl | null
+}
+
+interface StoryImageWithUrl extends StoryImage {
+  url: string
 }
 
 // Matches lines like: ---**Page 2**, **Page 2**, --- Page 2 ---, etc.
@@ -40,7 +44,9 @@ function splitByPageBreaks(content: string): string[] | null {
 // Split story content into pages.
 // Priority: explicit page-break markers → image count distribution → paragraph pairs.
 function buildPages(content: string, images: StoryImage[]): Page[] {
-  const sorted = [...images].sort((a, b) => a.scene_index - b.scene_index)
+  const sorted = [...images]
+    .filter((image): image is StoryImageWithUrl => Boolean(image.url))
+    .sort((a, b) => a.scene_index - b.scene_index)
 
   // Use explicit page breaks when present — images matched by position
   const sections = splitByPageBreaks(content)

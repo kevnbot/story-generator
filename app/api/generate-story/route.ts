@@ -6,6 +6,11 @@ import { generateStoryImageWithReference, generateGroupReferenceImage, applyArtS
 import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
+import {
+  buildStoryImagePath,
+  copyRemoteImageToStoragePath,
+  createSignedImageUrlsMap,
+} from "@/lib/storage/images"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 
@@ -229,10 +234,25 @@ Each page must describe one clear visual moment — where the characters are, wh
           send({ type: "status", message: "Planning illustrations…" })
 
           const storyPages = splitStoryPages(fullText)
-          const referenceProfileIds = new Set(profiles.filter(p => p.reference_image_url).map(p => p.id))
-          const { outfits, scenes, prompt: vp } = await extractStoryVisuals(storyPages, profiles, referenceProfileIds)
+          const signedReferenceUrlsByPath = await createSignedImageUrlsMap(
+            service,
+            profiles
+              .map((profile) => profile.reference_image_path)
+              .filter((path): path is string => Boolean(path))
+          )
+          const profilesForReference = profiles.map((profile) => ({
+            ...profile,
+            reference_image_url: profile.reference_image_path
+              ? signedReferenceUrlsByPath.get(profile.reference_image_path) ?? profile.reference_image_url
+              : profile.reference_image_url,
+          }))
+
+          const referenceProfileIds = new Set(
+            profilesForReference.filter((profile) => Boolean(profile.reference_image_url)).map((profile) => profile.id)
+          )
+          const { outfits, scenes, prompt: vp } = await extractStoryVisuals(storyPages, profilesForReference, referenceProfileIds)
           visualsPrompt = vp
-          characterAnchor = buildCharacterAnchor(profiles, outfits)
+          characterAnchor = buildCharacterAnchor(profilesForReference, outfits)
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
           const styleDescription = artStyle?.prompt_prefix
@@ -244,7 +264,7 @@ Each page must describe one clear visual moment — where the characters are, wh
           // Kontext anchor for every page — so character consistency AND art style are
           // both carried through without either fighting the other.
           send({ type: "status", message: "Preparing character references…" })
-          const groupReferenceUrl = await generateGroupReferenceImage(profiles, outfits)
+          const groupReferenceUrl = await generateGroupReferenceImage(profilesForReference, outfits)
 
           // Apply the selected art style to the group reference before using it as the
           // Kontext anchor. Without this step, Kontext would maintain the neutral FLUX/dev
@@ -264,16 +284,31 @@ Each page must describe one clear visual moment — where the characters are, wh
           pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
             const scene = scenes[i] ?? scenes[scenes.length - 1] ?? ""
             if (referenceImageUrl) {
-              const slimAnchor = buildCharacterAnchorSlim(profiles, outfits, referenceProfileIds)
+              const slimAnchor = buildCharacterAnchorSlim(profilesForReference, outfits, referenceProfileIds)
               return `${scene}. ${styleDescription}. ${slimAnchor}. Maintain all characters' exact appearances from the reference image. ${humanRule}`
             }
             return `${scene}. ${styleDescription}. ${characterAnchor}. ${humanRule} Consistent character design throughout.`
           })
 
-          const urls = await Promise.all(pagePrompts.map(p => generateStoryImageWithReference(p, referenceImageUrl, storySeed)))
-          urls.forEach((url, i) => {
-            if (url) images.push({ url, caption: null, scene_index: i })
-          })
+          const generatedUrls = await Promise.all(
+            pagePrompts.map((prompt) => generateStoryImageWithReference(prompt, referenceImageUrl, storySeed))
+          )
+          for (const [sceneIndex, url] of generatedUrls.entries()) {
+            if (!url) continue
+
+            const storedPath = await copyRemoteImageToStoragePath({
+              supabase: service,
+              sourceUrl: url,
+              buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
+            })
+
+            if (storedPath) {
+              images.push({ path: storedPath, caption: null, scene_index: sceneIndex })
+            } else {
+              // Keep legacy URL fallback only when storage upload fails.
+              images.push({ url, caption: null, scene_index: sceneIndex })
+            }
+          }
         }
 
         const { data: story } = await service

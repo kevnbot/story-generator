@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { StoriesClient } from "@/components/stories/stories-client"
+import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage/images"
+import type { Story } from "@/types"
 
 export default async function StoriesPage() {
   const supabase = await createClient()
@@ -23,5 +25,16 @@ export default async function StoriesPage() {
         .order("created_at", { ascending: false })
     : { data: [] }
 
-  return <StoriesClient stories={stories ?? []} />
+  const storyRows = (stories ?? []) as Story[]
+  const signedUrlsByPath = await createSignedImageUrlsMap(
+    service,
+    storyRows.flatMap((story) => (story.images ?? []).map((image) => image.path).filter((p): p is string => Boolean(p)))
+  )
+
+  const resolvedStories = storyRows.map((story) => ({
+    ...story,
+    images: resolveStoryImagesForUi(story.images ?? [], signedUrlsByPath),
+  }))
+
+  return <StoriesClient stories={resolvedStories} />
 }

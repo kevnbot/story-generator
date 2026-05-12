@@ -1,9 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import type { Story, KidProfile, StoryTemplate } from "@/types"
 import BookReader from "@/components/library/BookReader"
 import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
+import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage/images"
 
 export default async function StoryDetailPage({
   params,
@@ -21,7 +22,7 @@ export default async function StoryDetailPage({
     .select(`
       *,
       story_templates ( system_prompt, user_prompt_template ),
-      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, deleted_at, created_at, updated_at, account_id )
+      kid_profiles ( id, name, age, age_months, gender, appearance, personality_tags, toy, prompt_summary, reference_image_path, reference_image_url, deleted_at, created_at, updated_at, account_id )
     `)
     .eq("id", storyId)
     .is("deleted_at", null)
@@ -51,7 +52,17 @@ export default async function StoryDetailPage({
     generation_params = { ...generation_params, kid_names: [r.kid_profiles.name] }
   }
 
-  const story: Story = { ...(r as unknown as Story), generation_params }
+  const service = createServiceClient()
+  const signedUrlsByPath = await createSignedImageUrlsMap(
+    service,
+    ((r.images ?? []) as Story["images"]).map((image) => image.path).filter((p): p is string => Boolean(p))
+  )
+
+  const story: Story = {
+    ...(r as unknown as Story),
+    generation_params,
+    images: resolveStoryImagesForUi((r.images ?? []) as Story["images"], signedUrlsByPath),
+  }
 
   return (
     <div className="mx-auto max-w-xl px-4">

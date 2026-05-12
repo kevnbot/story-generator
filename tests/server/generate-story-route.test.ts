@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => {
               personality_tags: ["curious"],
               toy: { name: "Moon Bear" },
               prompt_summary: "Luna is curious.",
+              reference_image_path: null,
               reference_image_url: null,
               deleted_at: null,
               created_at: "2026-05-01T00:00:00.000Z",

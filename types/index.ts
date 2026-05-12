@@ -61,6 +61,7 @@ export interface KidProfile {
   personality_tags: string[]
   toy: KidToy
   prompt_summary: string
+  reference_image_path: string | null
   reference_image_url: string | null
   deleted_at: string | null
   created_at: string
@@ -94,9 +95,14 @@ export interface GenerationJob {
 }
 
 export interface StoryImage {
-  url: string
+  path?: string
+  url?: string
   caption: string | null
   scene_index: number
+}
+
+export interface StoryImageForUi extends StoryImage {
+  url: string
 }
 
 export interface GenerationParams {

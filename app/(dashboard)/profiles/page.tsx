@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { ProfilesClient } from "@/components/profiles/profiles-client"
+import { createSignedImageUrlsMap } from "@/lib/storage/images"
 
 export default async function ProfilesPage() {
   const supabase = await createClient()
@@ -17,11 +18,24 @@ export default async function ProfilesPage() {
   const { data: profiles } = userRow
     ? await service
         .from("kid_profiles")
-        .select("id, name, age, age_months, gender, appearance, personality_tags, toy, reference_image_url")
+        .select("id, name, age, age_months, gender, appearance, personality_tags, toy, reference_image_path, reference_image_url")
         .eq("account_id", userRow.account_id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
     : { data: [] }
 
-  return <ProfilesClient profiles={profiles ?? []} />
+  const rows = profiles ?? []
+  const signedUrlsByPath = await createSignedImageUrlsMap(
+    service,
+    rows.map((p) => p.reference_image_path).filter((p): p is string => Boolean(p))
+  )
+
+  const resolvedProfiles = rows.map((profile) => ({
+    ...profile,
+    reference_image_url: profile.reference_image_path
+      ? signedUrlsByPath.get(profile.reference_image_path) ?? profile.reference_image_url
+      : profile.reference_image_url,
+  }))
+
+  return <ProfilesClient profiles={resolvedProfiles} />
 }

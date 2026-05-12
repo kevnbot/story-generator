@@ -6,6 +6,7 @@ import { headers } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
 import { generateProfileReferenceImage } from "@/lib/ai/image"
+import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath } from "@/lib/storage/images"
 import type { KidAppearance, KidToy, KidProfile } from "@/types"
 
 function parseProfileFormData(formData: FormData): {
@@ -95,7 +96,26 @@ export async function createProfile(prevState: string | null, formData: FormData
       if (inserted) {
         const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
         if (referenceUrl) {
-          await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", inserted.id)
+          const storedPath = await copyRemoteImageToStoragePath({
+            supabase: service,
+            sourceUrl: referenceUrl,
+            buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, inserted.id, extension),
+          })
+
+          if (storedPath) {
+            await service
+              .from("kid_profiles")
+              .update({
+                reference_image_path: storedPath,
+                reference_image_url: null,
+              })
+              .eq("id", inserted.id)
+          } else {
+            await service
+              .from("kid_profiles")
+              .update({ reference_image_url: referenceUrl })
+              .eq("id", inserted.id)
+          }
         }
       }
 
@@ -154,7 +174,26 @@ export async function updateProfile(profileId: string, prevState: string | null,
       if (updated) {
         const referenceUrl = await generateProfileReferenceImage(updated as KidProfile).catch(() => null)
         if (referenceUrl) {
-          await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", profileId)
+          const storedPath = await copyRemoteImageToStoragePath({
+            supabase: service,
+            sourceUrl: referenceUrl,
+            buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, profileId, extension),
+          })
+
+          if (storedPath) {
+            await service
+              .from("kid_profiles")
+              .update({
+                reference_image_path: storedPath,
+                reference_image_url: null,
+              })
+              .eq("id", profileId)
+          } else {
+            await service
+              .from("kid_profiles")
+              .update({ reference_image_url: referenceUrl })
+              .eq("id", profileId)
+          }
         }
       }
 
