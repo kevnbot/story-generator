@@ -86,7 +86,7 @@ export default function BookCard({ story, childName, isNew }: BookCardProps) {
   })
 
   return (
-    <Link href={`/library/${story.id}`} className="group flex flex-col items-center gap-2.5 focus:outline-none">
+    <Link href={`/library/${story.id}`} className="group flex flex-col items-center gap-2.5 focus:outline-hidden">
       {/* Book */}
       <div
         className="relative w-full cursor-pointer transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:rotate-1 group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-brand-500"

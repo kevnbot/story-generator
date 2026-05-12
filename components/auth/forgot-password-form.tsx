@@ -12,7 +12,7 @@ export function ForgotPasswordForm({ initialError }: { initialError?: string }) 
   const [state, action, pending] = useActionState(requestPasswordReset, initialState)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-border p-8">
+    <div className="bg-white rounded-2xl shadow-xs border border-border p-8">
       <h2 className="text-xl font-semibold mb-2">Reset your password</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Enter your email and we&apos;ll send a link to create a new password.

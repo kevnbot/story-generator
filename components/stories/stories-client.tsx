@@ -69,12 +69,12 @@ function StoryCard({ story, isVersion = false, onDelete }: {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium truncate">{story.title}</span>
               {story.version_number > 1 && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                <span className="text-xs px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground shrink-0">
                   v{story.version_number}
                 </span>
               )}
               {story.has_images && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                <span className="text-xs px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground shrink-0">
                   + images
                 </span>
               )}

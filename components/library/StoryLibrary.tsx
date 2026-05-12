@@ -38,7 +38,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={[
-          "appearance-none cursor-pointer rounded-full border px-3 py-1 pr-7 text-[12px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1",
+          "appearance-none cursor-pointer rounded-full border px-3 py-1 pr-7 text-[12px] font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:ring-offset-1",
           active
             ? "border-transparent bg-foreground text-background"
             : "border-border bg-transparent text-muted-foreground hover:bg-muted",
@@ -76,7 +76,7 @@ function SortDropdown({ value, onChange }: SortDropdownProps) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as SortKey)}
-        className="appearance-none cursor-pointer rounded-full border border-border bg-transparent px-3 py-1 pr-7 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1"
+        className="appearance-none cursor-pointer rounded-full border border-border bg-transparent px-3 py-1 pr-7 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:ring-offset-1"
         aria-label="Sort stories"
       >
         {SORT_DEFS.map((s) => (
@@ -99,7 +99,7 @@ function NewStorySlot() {
   return (
     <Link
       href="/generate"
-      className="group flex flex-col items-center gap-2.5 focus:outline-none"
+      className="group flex flex-col items-center gap-2.5 focus:outline-hidden"
     >
       <div
         className="flex w-full flex-col items-center justify-center gap-2 border-[1.5px] border-dashed border-border text-muted-foreground transition-colors group-hover:border-foreground/40 group-hover:bg-muted group-focus-visible:ring-2 group-focus-visible:ring-brand-500"

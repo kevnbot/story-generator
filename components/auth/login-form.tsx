@@ -19,7 +19,7 @@ export function LoginForm({
   const [error, action, pending] = useActionState(login, null)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-border p-8">
+    <div className="bg-white rounded-2xl shadow-xs border border-border p-8">
       <h2 className="text-xl font-semibold mb-6">Sign in</h2>
       <form action={action} className="space-y-4">
         <input type="hidden" name="redirectTo" value={redirectTo || "/generate"} />

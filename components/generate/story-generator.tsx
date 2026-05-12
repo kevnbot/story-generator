@@ -390,7 +390,7 @@ export function StoryGenerator({
               placeholder="e.g. going to the dentist for the first time, a dragon who is afraid of the dark, finding a secret door in the garden…"
               value={storyDescription}
               onChange={e => setStoryDescription(e.target.value)}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring resize-none"
             />
           </div>
 
@@ -404,7 +404,7 @@ export function StoryGenerator({
                 placeholder="Leave blank to generate a fresh version, or describe what you'd like changed..."
                 value={feedback}
                 onChange={e => setFeedback(e.target.value)}
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring resize-none"
               />
             </div>
           )}
@@ -426,12 +426,12 @@ export function StoryGenerator({
               aria-checked={includeImages}
               onClick={() => imagesAvailable && setIncludeImages(v => !v)}
               disabled={!imagesAvailable}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                 includeImages ? "bg-primary" : "bg-input"
               } ${!imagesAvailable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
                   includeImages ? "translate-x-6" : "translate-x-1"
                 }`}
               />

@@ -22,7 +22,7 @@ function PromptBlock({ label, content }: { label: string; content: string }) {
         </span>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
           {copied ? "Copied" : "Copy"}

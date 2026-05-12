@@ -4,7 +4,7 @@ import { ResendVerificationForm } from "@/components/auth/resend-verification-fo
 
 export default function VerifyEmailPage() {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-border p-8 text-center">
+    <div className="bg-white rounded-2xl shadow-xs border border-border p-8 text-center">
       <div className="text-4xl mb-4">📬</div>
       <h2 className="text-xl font-semibold mb-2">Check your email</h2>
       <p className="text-sm text-muted-foreground mb-6">

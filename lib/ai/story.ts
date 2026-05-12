@@ -19,7 +19,6 @@ export async function* generateStoryStream(
       {
         type: "text",
         text: systemPrompt,
-        // @ts-expect-error — cache_control is a beta field not yet in SDK types
         cache_control: { type: "ephemeral" },
       },
     ],

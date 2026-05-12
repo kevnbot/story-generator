@@ -11,7 +11,7 @@ export function SignupForm() {
   const [error, action, pending] = useActionState(signup, null)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-border p-8">
+    <div className="bg-white rounded-2xl shadow-xs border border-border p-8">
       <h2 className="text-xl font-semibold mb-6">Create an account</h2>
       <form action={action} className="space-y-4">
         <div className="space-y-1.5">

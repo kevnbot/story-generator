@@ -18,7 +18,7 @@ export default async function AccountSecurityPage({
       <p className="text-muted-foreground mb-6">
         Update the password you use to sign in.
       </p>
-      <div className="bg-white rounded-2xl shadow-sm border border-border p-6">
+      <div className="bg-white rounded-2xl shadow-xs border border-border p-6">
         {successMessage && (
           <p className="text-sm text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 mb-4">
             {successMessage}
