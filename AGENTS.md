@@ -29,6 +29,7 @@ Primary user flows:
 - Anthropic SDK for story generation.
 - fal.ai HTTP API calls from server-side code.
 - Upstash Redis rate limits.
+- Sentry for error monitoring and structured logs.
 - Server-side comms through Resend and Twilio.
 
 ## Commands
@@ -40,10 +41,14 @@ Use npm; this repo has `package-lock.json`.
 - Production build: `npm run build`
 - Start production server after build: `npm run start`
 - Generate Next route types without a full build: `npx next typegen`
-- Lint with Next 16: `npx eslint .`
+- Lint with Next 16: `npm run lint` (runs `eslint .`)
+- Unit/component/server tests: `npm run test:unit`
+- Unit test watch mode: `npm run test:unit:watch`
+- Playwright E2E tests: `npm run test:e2e`
+- Playwright UI mode: `npm run test:e2e:ui`
+- Full local validation: `npm run test:all`
 
 Important caveats:
-- `npm run lint` currently maps to `next lint`, but Next 16 removed `next lint`. Prefer `npx eslint .` unless the script is updated.
 - `npm run db:migrate` points to `db/migrate.js`, but that file is not present in this checkout. Do not assume the script works.
 
 ## Environment
@@ -64,8 +69,11 @@ Optional or feature-specific:
 - `TWILIO_*` variables enable SMS and 2FA helpers.
 - `STRIPE_*` variables are listed but checkout/webhook implementation may not be complete.
 - `ADMIN_USER_IDS` is a comma-separated allowlist for `/admin`.
+- `NEXT_PUBLIC_SENTRY_DSN` enables Sentry client, server, and edge event capture.
+- `NEXT_PUBLIC_SENTRY_ENVIRONMENT` and `SENTRY_ENVIRONMENT` set Sentry environment names.
+- `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` enable source map upload in builds/CI.
 
-Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, Stripe secrets, or Redis tokens to Client Components.
+Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, Stripe secrets, Redis tokens, or `SENTRY_AUTH_TOKEN` to Client Components.
 
 ## Repository Map
 
@@ -76,6 +84,7 @@ Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, St
 - `app/actions/`: Server Functions for auth, profile, and story mutations.
 - `app/api/generate-story/route.ts`: authenticated streaming story generation endpoint.
 - `app/api/auth/callback/route.ts`: Supabase auth callback.
+- `instrumentation.ts`, `instrumentation-client.ts`, and `sentry.*.config.ts`: Sentry SDK setup for Next.js request, client, server, and edge capture.
 - `proxy.ts`: Next 16 Proxy for auth redirects and admin guarding.
 - `components/generate/`: client story generation UI.
 - `components/profiles/`: profile list and form UI.
@@ -83,6 +92,12 @@ Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, St
 - `components/library/`: library, reader, book cards, filters, prompt modal.
 - `components/admin/`: prompt inspection UI.
 - `components/ui/`: local UI primitives.
+- `tests/unit/`: Vitest tests for pure helpers and business logic.
+- `tests/components/`: Vitest + Testing Library tests for Client Components.
+- `tests/server/`: mocked Vitest tests for Route Handlers and Server Functions.
+- `tests/e2e/`: mocked-first Playwright browser tests.
+- `tests/setup/vitest.ts`: Vitest global setup and stable Next/browser mocks.
+- `app/test-harness/`: guarded E2E-only fixture routes used by Playwright.
 - `lib/supabase/`: server and browser Supabase clients.
 - `lib/ai/`: story generation, image generation, and prompt builders.
 - `lib/rate-limit/`: Upstash-backed story and SMS rate limits.
@@ -114,6 +129,19 @@ Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, St
 - Keep client payloads small and non-sensitive. Server Function return values are serialized to the client.
 - Validate external inputs from `FormData`, JSON bodies, query params, and route params before database writes.
 - Never log full prompts together with secrets, auth tokens, service keys, phone numbers, or payment data.
+
+## Sentry Logging
+
+- Sentry is initialized through `instrumentation-client.ts`, `instrumentation.ts`, `sentry.server.config.ts`, and `sentry.edge.config.ts`; keep those files aligned when changing SDK options.
+- `instrumentation.ts` must export `onRequestError = Sentry.captureRequestError` for Server Component, Proxy, and request error capture.
+- `instrumentation-client.ts` must export `onRouterTransitionStart = Sentry.captureRouterTransitionStart`.
+- All runtimes use `sendDefaultPii: true` and `enableLogs: true`; do not add Session Replay or tracing sample rates unless explicitly requested.
+- Prefer `Sentry.logger.warn/error` for operational failures that should be searchable in Sentry logs.
+- Use structured attributes with snake_case keys, such as `user_id`, `account_id`, `job_id`, `provider`, `model`, `status_code`, `profile_count`, `story_length`, and `image_count`.
+- For unexpected exceptions, call `Sentry.captureException(error, { tags, extra })` with safe context only.
+- Do not log full prompts, generated story content, child appearance/toy details beyond IDs or counts, raw provider response bodies, service role keys, provider API keys, auth tokens, phone numbers, email bodies, payment data, or Sentry auth tokens.
+- Server Functions that need Sentry action context should use `Sentry.withServerActionInstrumentation()` with `headers: await headers()`. Do not pass raw `FormData` or `recordResponse: true` for profile/story actions because payloads can contain child details or generated content.
+- Sentry source map upload is configured in `next.config.ts` through `withSentryConfig`; it should depend on `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` being present in CI.
 
 ## Data Model Notes
 
@@ -181,10 +209,13 @@ Important behavior:
 
 ## Testing And Verification
 
-There is no dedicated test suite in this checkout. For changes, use the narrowest meaningful checks:
+This checkout has Vitest and Playwright coverage. For changes, use the narrowest meaningful checks:
 
+- Unit/component/server tests: `npm run test:unit`
+- Playwright E2E tests: `npm run test:e2e`
+- Lint: `npm run lint`
 - Type and production validation: `npm run build`
-- Lint: `npx eslint .`
+- Full local validation: `npm run test:all`
 - Next route helper generation: `npx next typegen`
 - Manual smoke test with `npm run dev`:
   - Auth redirect behavior.
@@ -194,7 +225,22 @@ There is no dedicated test suite in this checkout. For changes, use the narrowes
   - Library story reader and delete flow.
   - Admin access with and without `ADMIN_USER_IDS`.
 
+Testing conventions:
+- Vitest config lives in `vitest.config.ts` and uses jsdom, React Testing Library, global test APIs, and native tsconfig path resolution.
+- Keep unit tests fast and mocked. Mock Supabase, Anthropic, fal.ai, Redis, Twilio, Stripe, Resend, and Next navigation/cache APIs rather than calling external services.
+- Prefer pure helper coverage in `tests/unit/`; Client Component behavior in `tests/components/`; narrow mocked Route Handler or Server Function tests in `tests/server/`.
+- Playwright config lives in `playwright.config.ts` and starts `npm run dev` with dummy non-secret env values and `NEXT_PUBLIC_E2E_TEST=true`.
+- Playwright should stay mocked-first. Intercept `/api/**` calls with `page.route()` instead of requiring real Supabase/auth/provider credentials.
+- The `app/test-harness/*` routes are for Playwright fixtures only. They must stay guarded by `NEXT_PUBLIC_E2E_TEST` and must not expose secrets or real provider mocks to browser code.
+- If Playwright browsers are missing locally, run `npx playwright install chromium`.
+
 If a check cannot run because credentials are missing, state that clearly in the final response and explain what was verified instead.
+
+For Sentry changes specifically:
+- Run `npm run build` to validate instrumentation and `withSentryConfig`.
+- Run `npm run lint` or explain any unrelated pre-existing failures.
+- If Sentry credentials are available, trigger one safe test exception and one safe structured logger call, then confirm they appear in Sentry Issues/Logs.
+- If Sentry credentials are not available, verify the app still boots without `NEXT_PUBLIC_SENTRY_DSN`.
 
 ## Common Pitfalls
 
@@ -203,8 +249,12 @@ If a check cannot run because credentials are missing, state that clearly in the
 - Do not treat `params` or `searchParams` as plain objects in new App Router code.
 - Do not put `SUPABASE_SERVICE_ROLE_KEY` or AI provider keys in browser-executed code.
 - Do not bypass account scoping when using the service role client.
-- Do not assume `npm run lint` works until the script is fixed for Next 16.
+- Do not use `next lint`; Next 16 removed it. Use `npm run lint` or `npx eslint .`.
 - Do not run or rely on `npm run db:migrate` until `db/migrate.js` exists.
+- Do not remove or rename Sentry instrumentation files without updating Next/Sentry setup together.
+- Do not add Sentry tunneling unless you also update the `proxy.ts` matcher and account for the extra server load.
+- Do not make Playwright depend on real Supabase or AI/image provider credentials unless explicitly asked.
+- Do not remove the `NEXT_PUBLIC_E2E_TEST` guard from `app/test-harness/*` routes.
 - Do not change prompt structure casually; story and image prompts contain guardrails for age-appropriateness, character consistency, and toy/child separation.
 - Do not deduct credits for failed generation paths without confirming job and story state transitions.
 
@@ -218,6 +268,8 @@ Before editing:
 5. Decide which verification command can actually run in the current environment.
 
 Before finishing:
-1. Run `npx eslint .` or explain why it could not run.
-2. Run `npm run build` for broad app changes, or explain why it could not run.
-3. Mention any missing env vars, unavailable services, or known script gaps.
+1. Run `npm run lint` or explain why it could not run.
+2. Run `npm run test:unit` for logic, component, route handler, or Server Function changes.
+3. Run `npm run build` for broad app changes, or explain why it could not run.
+4. Run `npm run test:e2e` for auth, navigation, generation UI, or library flow changes.
+5. Mention any missing env vars, unavailable services, or known script gaps.
