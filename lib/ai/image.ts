@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { buildReferenceImagePrompt } from "@/lib/ai/prompt-builder"
 import type { KidProfile } from "@/types"
 
@@ -29,7 +30,11 @@ export async function generateProfileReferenceImage(profile: KidProfile): Promis
   })
 
   if (!response.ok) {
-    console.error("fal.ai reference image error:", await response.text())
+    Sentry.logger.error("fal.ai reference image generation failed", {
+      provider: "fal.ai",
+      model: "fal-ai/flux/dev",
+      status_code: response.status,
+    })
     return null
   }
 
@@ -86,7 +91,13 @@ export async function generateGroupReferenceImage(
       const url = data.images?.[0]?.url
       if (url) currentImageUrl = url
     } else {
-      console.error(`fal.ai group reference error adding ${p.name}:`, await response.text().catch(() => ""))
+      Sentry.logger.error("fal.ai group reference image update failed", {
+        provider: "fal.ai",
+        model: "fal-ai/flux-pro/kontext",
+        status_code: response.status,
+        profile_index: i,
+        profile_count: withRef.length,
+      })
     }
   }
 
@@ -117,7 +128,11 @@ export async function applyArtStyleToReference(
     if (url) return url
   }
 
-  console.error("applyArtStyleToReference: style transfer failed, using original reference")
+  Sentry.logger.warn("fal.ai reference art style transfer failed; using original reference", {
+    provider: "fal.ai",
+    model: "fal-ai/flux-pro/kontext",
+    status_code: response.status,
+  })
   return referenceUrl
 }
 
@@ -140,7 +155,14 @@ async function falPostWithRetry(
     if (!isRetryable || attempt === maxAttempts) {
       return { ok: false, data: null, errorText }
     }
-    console.warn(`fal.ai ${model} attempt ${attempt} failed (${response.status}), retrying in ${delayMs}ms…`)
+    Sentry.logger.warn("fal.ai image generation attempt failed; retrying", {
+      provider: "fal.ai",
+      model,
+      attempt,
+      max_attempts: maxAttempts,
+      status_code: response.status,
+      retry_delay_ms: delayMs,
+    })
     await sleep(delayMs)
   }
   return { ok: false, data: null, errorText: "max retries exceeded" }
@@ -154,7 +176,9 @@ export async function generateStoryImageWithReference(
   seed?: number
 ): Promise<string | null> {
   if (!process.env.FAL_KEY) {
-    console.warn("FAL_KEY not set — skipping image generation")
+    Sentry.logger.warn("fal.ai key missing; skipping image generation", {
+      provider: "fal.ai",
+    })
     return null
   }
 
@@ -173,7 +197,11 @@ export async function generateStoryImageWithReference(
       const url = (data as Record<string, unknown> & { images?: { url: string }[] })?.images?.[0]?.url ?? null
       if (url) return url
     } else {
-      console.error("fal.ai kontext error, falling back to standard generation:", errorText)
+      Sentry.logger.warn("fal.ai Kontext image generation failed; falling back to standard generation", {
+        provider: "fal.ai",
+        model: "fal-ai/flux-pro/kontext",
+        error_length: errorText.length,
+      })
     }
   }
 
@@ -189,7 +217,11 @@ export async function generateStoryImageWithReference(
   })
 
   if (!ok) {
-    console.error("fal.ai flux/dev error:", errorText)
+    Sentry.logger.error("fal.ai standard image generation failed", {
+      provider: "fal.ai",
+      model: "fal-ai/flux/dev",
+      error_length: errorText.length,
+    })
     return null
   }
 

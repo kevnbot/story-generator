@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
@@ -331,7 +332,26 @@ Each page must describe one clear visual moment — where the characters are, wh
         send({ type: "done", storyId: story?.id ?? null, title, hasImages: images.length > 0 })
         controller.close()
       } catch (err) {
-        console.error("[generate-story] stream error:", err)
+        const logAttributes = {
+          user_id: user.id,
+          account_id: userRow.account_id,
+          job_id: job.id,
+          profile_count: profiles.length,
+          story_length: storyLength,
+          include_images: includeImages,
+          images_enabled: imagesEnabled,
+          image_count: imagesEnabled ? lengthConfig.imageCount : 0,
+          provider: "anthropic",
+        }
+
+        Sentry.logger.error("Story generation stream failed", logAttributes)
+        Sentry.captureException(err, {
+          tags: {
+            area: "story_generation",
+            provider: "anthropic",
+          },
+          extra: logAttributes,
+        })
         await service
           .from("generation_jobs")
           .update({ status: "failed", error_message: String(err) })

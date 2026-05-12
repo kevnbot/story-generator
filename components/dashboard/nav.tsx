@@ -13,7 +13,6 @@ const navLinks = [
 ]
 
 export function Nav({
-  userName,
   credits,
 }: {
   userName: string | null

@@ -138,7 +138,7 @@ function StoryCard({ story, isVersion = false, onDelete }: {
 }
 
 export function StoriesClient({ stories }: { stories: Story[] }) {
-  const [pending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
   const groups = groupStories(stories)
 
   const handleDelete = (id: string) => {

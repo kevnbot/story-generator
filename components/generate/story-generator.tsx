@@ -165,7 +165,7 @@ export function StoryGenerator({
         <div className="text-5xl">👧</div>
         <h2 className="text-xl font-semibold">Add a kid profile first</h2>
         <p className="text-muted-foreground max-w-sm">
-          Profiles let us personalize the story with your child's name, age, and favorite things.
+          Profiles let us personalize the story with your child&apos;s name, age, and favorite things.
         </p>
         <Button asChild>
           <a href="/profiles">Add Profile</a>
@@ -422,6 +422,7 @@ export function StoryGenerator({
             <button
               type="button"
               role="switch"
+              aria-label="Include images"
               aria-checked={includeImages}
               onClick={() => imagesAvailable && setIncludeImages(v => !v)}
               disabled={!imagesAvailable}

@@ -3,6 +3,20 @@ import { config } from "@/lib/config"
 import { checkSmsRateLimit } from "@/lib/rate-limit"
 import type { SendCommsParams, CommTrigger } from "@/types"
 
+interface NotificationPrefs {
+  email_marketing: boolean
+  email_transactional: boolean
+  sms_marketing: boolean
+  sms_transactional: boolean
+}
+
+interface CommsUser {
+  email: string
+  phone_number: string | null
+  phone_verified: boolean
+  notification_preferences?: NotificationPrefs[]
+}
+
 // ─── Email sender (Resend) ────────────────────────────────────────────────────
 
 async function sendEmail(to: string, subject: string, html: string, templateId: string, userId: string) {
@@ -86,7 +100,8 @@ export async function sendComms({ userId, trigger, data = {} }: SendCommsParams)
 
   if (!user) return
 
-  const prefs = (user as any).notification_preferences?.[0]
+  const userWithPrefs = user as CommsUser
+  const prefs = userWithPrefs.notification_preferences?.[0]
   const template = getTemplate(trigger, data)
   if (!template) return
 
@@ -94,12 +109,13 @@ export async function sendComms({ userId, trigger, data = {} }: SendCommsParams)
 
   // Email
   if (shouldSendEmail(trigger, prefs)) {
-    sends.push(sendEmail(user.email, template.emailSubject, template.emailHtml, trigger, userId))
+    sends.push(sendEmail(userWithPrefs.email, template.emailSubject, template.emailHtml, trigger, userId))
   }
 
   // SMS
-  if (shouldSendSms(trigger, prefs, user.phone_number, user.phone_verified)) {
-    sends.push(sendSms(user.phone_number!, template.smsBody, trigger, userId))
+  const phoneNumber = userWithPrefs.phone_number
+  if (phoneNumber && shouldSendSms(trigger, prefs, phoneNumber, userWithPrefs.phone_verified)) {
+    sends.push(sendSms(phoneNumber, template.smsBody, trigger, userId))
   }
 
   await Promise.allSettled(sends)
@@ -133,14 +149,14 @@ export async function verify2faOtp(phoneNumber: string, code: string) {
 
 // ─── Gate checks ─────────────────────────────────────────────────────────────
 
-function shouldSendEmail(trigger: CommTrigger, prefs: any): boolean {
+function shouldSendEmail(trigger: CommTrigger, prefs: NotificationPrefs | undefined): boolean {
   if (!prefs) return trigger === "signup_welcome" || trigger === "purchase_receipt"
   if (trigger === "signup_welcome" || trigger === "purchase_receipt") return true
   if (trigger === "marketing_promo") return prefs.email_marketing
   return prefs.email_transactional
 }
 
-function shouldSendSms(trigger: CommTrigger, prefs: any, phone: string | null, verified: boolean): boolean {
+function shouldSendSms(trigger: CommTrigger, prefs: NotificationPrefs | undefined, phone: string | null, verified: boolean): boolean {
   if (!phone || !verified || !prefs) return false
   if (trigger === "marketing_promo") return prefs.sms_marketing
   if (trigger === "signup_welcome" || trigger === "purchase_receipt") return false

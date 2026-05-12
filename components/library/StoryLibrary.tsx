@@ -30,7 +30,6 @@ interface FilterDropdownProps {
 
 function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps) {
   const active = value !== "all" && value !== ""
-  const currentLabel = options.find((o) => o.value === value)?.label ?? label
 
   return (
     <label className="relative inline-flex items-center">
@@ -149,7 +148,7 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
     [stories, filters, sort]
   )
 
-  const now = Date.now()
+  const [now] = useState(() => Date.now())
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.id, p.name])),
     [profiles]

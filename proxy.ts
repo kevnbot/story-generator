@@ -2,10 +2,28 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 const PUBLIC_ROUTES = ["/login", "/signup", "/verify-email", "/api/stripe/webhook", "/api/twilio/webhook"]
+const PUBLIC_METADATA_ROUTES = ["/sitemap.xml", "/robots.txt"]
 const ADMIN_ROUTES = ["/admin"]
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r))
+  const isPublicMetadata = PUBLIC_METADATA_ROUTES.includes(pathname)
+  const isStatic = pathname.startsWith("/_next") || pathname.startsWith("/favicon")
+
+  if (isStatic || isPublicMetadata) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
+
+  if (process.env.NEXT_PUBLIC_E2E_TEST === "true") {
+    if (pathname.startsWith("/test-harness") || isPublic) return supabaseResponse
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = "/login"
+    loginUrl.searchParams.set("redirectTo", pathname)
+    return NextResponse.redirect(loginUrl)
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,13 +43,6 @@ export async function proxy(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const { pathname } = request.nextUrl
-
-  // Allow public routes and static files
-  const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r))
-  const isStatic = pathname.startsWith("/_next") || pathname.startsWith("/favicon")
-
-  if (isStatic) return supabaseResponse
 
   // Redirect unauthenticated users to login
   if (!user && !isPublic) {
@@ -49,7 +60,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Guard admin routes
-  if (pathname.startsWith("/admin") && user) {
+  if (ADMIN_ROUTES.some(r => pathname.startsWith(r)) && user) {
     const adminIds = (process.env.ADMIN_USER_IDS || "").split(",").map(s => s.trim())
     if (!adminIds.includes(user.id)) {
       const homeUrl = request.nextUrl.clone()

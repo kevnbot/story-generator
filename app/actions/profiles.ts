@@ -1,6 +1,8 @@
 "use server"
 
+import * as Sentry from "@sentry/nextjs"
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
 import { generateProfileReferenceImage } from "@/lib/ai/image"
@@ -53,127 +55,145 @@ function parseProfileFormData(formData: FormData): {
 }
 
 export async function createProfile(prevState: string | null, formData: FormData): Promise<string | null> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return "Not authenticated"
+  return await Sentry.withServerActionInstrumentation(
+    "createProfile",
+    { headers: await headers() },
+    async () => {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return "Not authenticated"
 
-  const parsed = parseProfileFormData(formData)
-  if (parsed.error) return parsed.error
-  const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+      const parsed = parseProfileFormData(formData)
+      if (parsed.error) return parsed.error
+      const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
 
-  const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
+      const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
 
-  const service = createServiceClient()
-  const { data: userRow } = await service
-    .from("users")
-    .select("account_id")
-    .eq("id", user.id)
-    .single()
+      const service = createServiceClient()
+      const { data: userRow } = await service
+        .from("users")
+        .select("account_id")
+        .eq("id", user.id)
+        .single()
 
-  if (!userRow) return "User account not found"
+      if (!userRow) return "User account not found"
 
-  const { data: inserted, error } = await service.from("kid_profiles").insert({
-    account_id: userRow.account_id,
-    name,
-    age,
-    age_months,
-    gender,
-    appearance,
-    personality_tags: personalityTags,
-    toy,
-    prompt_summary: promptSummary,
-  }).select("*").single()
+      const { data: inserted, error } = await service.from("kid_profiles").insert({
+        account_id: userRow.account_id,
+        name,
+        age,
+        age_months,
+        gender,
+        appearance,
+        personality_tags: personalityTags,
+        toy,
+        prompt_summary: promptSummary,
+      }).select("*").single()
 
-  if (error) return error.message
+      if (error) return error.message
 
-  if (inserted) {
-    const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
-    if (referenceUrl) {
-      await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", inserted.id)
+      if (inserted) {
+        const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
+        if (referenceUrl) {
+          await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", inserted.id)
+        }
+      }
+
+      revalidatePath("/profiles")
+      revalidatePath("/generate")
+      return null
     }
-  }
-
-  revalidatePath("/profiles")
-  revalidatePath("/generate")
-  return null
+  )
 }
 
 export async function updateProfile(profileId: string, prevState: string | null, formData: FormData): Promise<string | null> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return "Not authenticated"
+  return await Sentry.withServerActionInstrumentation(
+    "updateProfile",
+    { headers: await headers() },
+    async () => {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return "Not authenticated"
 
-  const parsed = parseProfileFormData(formData)
-  if (parsed.error) return parsed.error
-  const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+      const parsed = parseProfileFormData(formData)
+      if (parsed.error) return parsed.error
+      const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
 
-  const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
+      const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
 
-  const service = createServiceClient()
-  const { data: userRow } = await service
-    .from("users")
-    .select("account_id")
-    .eq("id", user.id)
-    .single()
+      const service = createServiceClient()
+      const { data: userRow } = await service
+        .from("users")
+        .select("account_id")
+        .eq("id", user.id)
+        .single()
 
-  if (!userRow) return "User account not found"
+      if (!userRow) return "User account not found"
 
-  const { data: updated, error } = await service
-    .from("kid_profiles")
-    .update({
-      name,
-      age,
-      age_months,
-      gender,
-      appearance,
-      personality_tags: personalityTags,
-      toy,
-      prompt_summary: promptSummary,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", profileId)
-    .eq("account_id", userRow.account_id)
-    .is("deleted_at", null)
-    .select("*")
-    .single()
+      const { data: updated, error } = await service
+        .from("kid_profiles")
+        .update({
+          name,
+          age,
+          age_months,
+          gender,
+          appearance,
+          personality_tags: personalityTags,
+          toy,
+          prompt_summary: promptSummary,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profileId)
+        .eq("account_id", userRow.account_id)
+        .is("deleted_at", null)
+        .select("*")
+        .single()
 
-  if (error) return error.message
+      if (error) return error.message
 
-  if (updated) {
-    const referenceUrl = await generateProfileReferenceImage(updated as KidProfile).catch(() => null)
-    if (referenceUrl) {
-      await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", profileId)
+      if (updated) {
+        const referenceUrl = await generateProfileReferenceImage(updated as KidProfile).catch(() => null)
+        if (referenceUrl) {
+          await service.from("kid_profiles").update({ reference_image_url: referenceUrl }).eq("id", profileId)
+        }
+      }
+
+      revalidatePath("/profiles")
+      revalidatePath("/generate")
+      return null
     }
-  }
-
-  revalidatePath("/profiles")
-  revalidatePath("/generate")
-  return null
+  )
 }
 
 export async function deleteProfile(profileId: string): Promise<{ error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Not authenticated" }
+  return await Sentry.withServerActionInstrumentation(
+    "deleteProfile",
+    { headers: await headers() },
+    async () => {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { error: "Not authenticated" }
 
-  const service = createServiceClient()
-  const { data: userRow } = await service
-    .from("users")
-    .select("account_id")
-    .eq("id", user.id)
-    .single()
+      const service = createServiceClient()
+      const { data: userRow } = await service
+        .from("users")
+        .select("account_id")
+        .eq("id", user.id)
+        .single()
 
-  if (!userRow) return { error: "User not found" }
+      if (!userRow) return { error: "User not found" }
 
-  const { error } = await service
-    .from("kid_profiles")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", profileId)
-    .eq("account_id", userRow.account_id)
+      const { error } = await service
+        .from("kid_profiles")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", profileId)
+        .eq("account_id", userRow.account_id)
 
-  if (error) return { error: error.message }
+      if (error) return { error: error.message }
 
-  revalidatePath("/profiles")
-  revalidatePath("/generate")
-  return {}
+      revalidatePath("/profiles")
+      revalidatePath("/generate")
+      return {}
+    }
+  )
 }

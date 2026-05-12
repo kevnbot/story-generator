@@ -43,7 +43,7 @@ export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
     <form action={formAction} className="space-y-5">
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-1 space-y-1.5">
-          <Label htmlFor="name">Child's name</Label>
+          <Label htmlFor="name">Child&apos;s name</Label>
           <Input id="name" name="name" placeholder="Emma" required defaultValue={profile?.name} />
         </div>
         <div className="space-y-1.5">
