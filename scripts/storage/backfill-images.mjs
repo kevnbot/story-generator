@@ -6,6 +6,7 @@ const BUCKET = process.env.SUPABASE_IMAGES_BUCKET ?? "generated-images"
 const DRY_RUN = process.env.DRY_RUN === "true"
 const PROFILE_BATCH_SIZE = Number.parseInt(process.env.PROFILE_BACKFILL_BATCH_SIZE ?? "100", 10)
 const STORY_BATCH_SIZE = Number.parseInt(process.env.STORY_BACKFILL_BATCH_SIZE ?? "100", 10)
+const IMAGE_FETCH_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_BACKFILL_FETCH_TIMEOUT_MS ?? "15000", 10)
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
@@ -38,7 +39,21 @@ function extensionFromContentType(contentType) {
 }
 
 async function fetchRemoteImage(sourceUrl) {
-  const response = await fetch(sourceUrl)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort("timeout"), IMAGE_FETCH_TIMEOUT_MS)
+
+  let response
+  try {
+    response = await fetch(sourceUrl, { signal: controller.signal })
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`fetch timeout after ${IMAGE_FETCH_TIMEOUT_MS}ms`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
   if (!response.ok) {
     throw new Error(`failed to fetch image: status ${response.status}`)
   }
@@ -70,11 +85,15 @@ async function backfillProfileReferenceImages() {
 
   if (error) throw new Error(`profile query failed: ${error.message}`)
 
+  console.log(`Profiles queued for backfill: ${profiles?.length ?? 0}`)
+
   let migrated = 0
-  for (const profile of profiles ?? []) {
+  const total = profiles?.length ?? 0
+  for (const [index, profile] of (profiles ?? []).entries()) {
     try {
       const sourceUrl = profile.reference_image_url
       if (!sourceUrl) continue
+      console.log(`[profiles ${index + 1}/${total}] processing profile_id=${profile.id}`)
       const remote = await fetchRemoteImage(sourceUrl)
       const path = `accounts/${profile.account_id}/profiles/${profile.id}/reference/${Date.now()}.${remote.extension}`
 
@@ -95,8 +114,10 @@ async function backfillProfileReferenceImages() {
       }
 
       migrated += 1
+      console.log(`[profiles ${index + 1}/${total}] migrated profile_id=${profile.id}`)
     } catch (err) {
       console.error("profile backfill failed", {
+        progress: `${index + 1}/${total}`,
         profile_id: profile.id,
         account_id: profile.account_id,
         bucket: BUCKET,
@@ -117,16 +138,20 @@ async function backfillStoryImages() {
 
   if (error) throw new Error(`story query failed: ${error.message}`)
 
+  console.log(`Stories queued for image backfill: ${stories?.length ?? 0}`)
+
   let migratedStories = 0
   let migratedImages = 0
 
-  for (const story of stories ?? []) {
+  const total = stories?.length ?? 0
+  for (const [storyIndex, story] of (stories ?? []).entries()) {
     try {
+      console.log(`[stories ${storyIndex + 1}/${total}] processing story_id=${story.id}`)
       const sourceImages = Array.isArray(story.images) ? story.images : []
       let changed = false
 
       const migratedStoryImages = []
-      for (const image of sourceImages) {
+      for (const [imageIndex, image] of sourceImages.entries()) {
         const existingPath = typeof image?.path === "string" ? image.path : null
         const existingUrl = typeof image?.url === "string" ? image.url : null
 
@@ -135,6 +160,7 @@ async function backfillStoryImages() {
           continue
         }
 
+        console.log(`[stories ${storyIndex + 1}/${total}] fetching scene_index=${Number(image?.scene_index ?? imageIndex)}`)
         const remote = await fetchRemoteImage(existingUrl)
         const path = `accounts/${story.account_id}/stories/${story.id}/${Date.now()}-scene-${Number(image?.scene_index ?? 0) + 1}.${remote.extension}`
 
@@ -165,8 +191,12 @@ async function backfillStoryImages() {
       }
 
       if (changed) migratedStories += 1
+      console.log(
+        `[stories ${storyIndex + 1}/${total}] done story_id=${story.id} changed=${changed} migrated_images_total=${migratedImages}`
+      )
     } catch (err) {
       console.error("story image backfill failed", {
+        progress: `${storyIndex + 1}/${total}`,
         story_id: story.id,
         account_id: story.account_id,
         bucket: BUCKET,
@@ -188,6 +218,7 @@ async function main() {
     dry_run: DRY_RUN,
     profile_batch_size: PROFILE_BATCH_SIZE,
     story_batch_size: STORY_BATCH_SIZE,
+    image_fetch_timeout_ms: IMAGE_FETCH_TIMEOUT_MS,
   })
 
   const profileResult = await backfillProfileReferenceImages()
