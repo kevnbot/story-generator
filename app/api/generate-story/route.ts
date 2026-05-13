@@ -1,8 +1,8 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
-import { generateStoryImageWithReference, generateGroupReferenceImage, applyArtStyleToReference } from "@/lib/ai/image"
+import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
+import { generateStoryImageWithReference, applyArtStyleToReference } from "@/lib/ai/image"
 import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim } from "@/lib/ai/prompt-builder"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
@@ -222,17 +222,11 @@ Each page must describe one clear visual moment — where the characters are, wh
         }
         const title = customTitle?.trim() || embeddedTitle || await extractStoryTitle(fullText, primaryName)
 
-        // Generate images if requested and FAL_KEY is available.
-        // One Haiku call extracts consistent outfits + vivid per-page scenes from the finished story,
-        // then each image prompt leads with the scene so the model prioritises it.
         const images: StoryImage[] = []
         let characterAnchor = ""
         let pagePrompts: string[] = []
-        let visualsPrompt = ""
 
         if (imagesEnabled) {
-          send({ type: "status", message: "Planning illustrations…" })
-
           const storyPages = splitStoryPages(fullText)
           const signedReferenceUrlsByPath = await createSignedImageUrlsMap(
             service,
@@ -250,30 +244,18 @@ Each page must describe one clear visual moment — where the characters are, wh
           const referenceProfileIds = new Set(
             profilesForReference.filter((profile) => Boolean(profile.reference_image_url)).map((profile) => profile.id)
           )
-          const { outfits, scenes, prompt: vp } = await extractStoryVisuals(storyPages, profilesForReference, referenceProfileIds)
-          visualsPrompt = vp
-          characterAnchor = buildCharacterAnchor(profilesForReference, outfits)
+          characterAnchor = buildCharacterAnchor(profilesForReference, {})
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
           const styleDescription = artStyle?.prompt_prefix
             ? artStyle.prompt_prefix.replace(/[,\s]+$/, "")
             : "children's picture book illustration"
 
-          // Build a group reference image from all characters' stored profile references,
-          // then convert it to the selected art style. This styled image becomes the
-          // Kontext anchor for every page — so character consistency AND art style are
-          // both carried through without either fighting the other.
-          send({ type: "status", message: "Preparing character references…" })
-          const groupReferenceUrl = await generateGroupReferenceImage(profilesForReference, outfits)
-
-          // Apply the selected art style to the group reference before using it as the
-          // Kontext anchor. Without this step, Kontext would maintain the neutral FLUX/dev
-          // style of the profile reference images and ignore the text-based style request.
-          // Falls back to the unstyled reference if the style transfer call fails.
           send({ type: "status", message: "Applying art style…" })
-          const referenceImageUrl = (groupReferenceUrl && artStyle?.prompt_prefix)
-            ? await applyArtStyleToReference(groupReferenceUrl, styleDescription)
-            : groupReferenceUrl
+          const baseReferenceUrl = profilesForReference.find((p) => p.reference_image_url)?.reference_image_url ?? null
+          const referenceImageUrl = (baseReferenceUrl && artStyle?.prompt_prefix)
+            ? await applyArtStyleToReference(baseReferenceUrl, styleDescription)
+            : baseReferenceUrl
 
           // Fixed seed for the fallback FLUX/dev path so character features stay consistent
           // across pages when no Kontext reference image is available
@@ -282,9 +264,9 @@ Each page must describe one clear visual moment — where the characters are, wh
           send({ type: "status", message: `Generating ${lengthConfig.imageCount} images…` })
           const humanRule = "All characters are human children. Toys are separate stuffed objects held in hands — children have no animal features, fur, tails, or ears."
           pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
-            const scene = scenes[i] ?? scenes[scenes.length - 1] ?? ""
+            const scene = storyPages[i] ?? storyPages[storyPages.length - 1] ?? ""
             if (referenceImageUrl) {
-              const slimAnchor = buildCharacterAnchorSlim(profilesForReference, outfits, referenceProfileIds)
+              const slimAnchor = buildCharacterAnchorSlim(profilesForReference, {}, referenceProfileIds)
               return `${scene}. ${styleDescription}. ${slimAnchor}. Maintain all characters' exact appearances from the reference image. ${humanRule}`
             }
             return `${scene}. ${styleDescription}. ${characterAnchor}. ${humanRule} Consistent character design throughout.`
@@ -335,10 +317,8 @@ Each page must describe one clear visual moment — where the characters are, wh
               user_prompt: userPrompt,
               image_prompt: characterAnchor,
               character_anchor: characterAnchor || undefined,
-              visuals_prompt: pagePrompts.length > 0 ? visualsPrompt : undefined,
               image_prompts: pagePrompts.length > 0 ? pagePrompts : undefined,
               model: "claude-sonnet-4-6",
-              visuals_model: imagesEnabled ? "claude-sonnet-4-6" : undefined,
               image_model: imagesEnabled ? "fal-ai/flux/dev" : "",
             },
             credits_used: creditsNeeded,
