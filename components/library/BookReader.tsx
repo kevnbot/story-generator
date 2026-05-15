@@ -79,7 +79,7 @@ function buildPages(content: string, images: StoryImage[]): Page[] {
 
 function TitlePage({ story, dateLabel }: { story: Story; dateLabel: string }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 px-8 text-center">
+    <div className="flex flex-col items-center justify-center gap-5 px-8 py-14 text-center">
       <span className="text-5xl" aria-hidden="true">📖</span>
       <h1 className="font-serif text-3xl font-bold leading-snug" style={{ color: "#2d1f0e" }}>
         {story.title}
@@ -92,20 +92,17 @@ function TitlePage({ story, dateLabel }: { story: Story; dateLabel: string }) {
 
 function ImagePage({ page }: { page: Page }) {
   return (
-    <div className="flex h-full flex-col">
-      {/* Image — top 60% */}
-      <div className="flex-[3] overflow-hidden">
+    <div className="flex flex-col">
+      {/* Image at its natural landscape 4:3 ratio — no cropping */}
+      <div className="aspect-[4/3] w-full">
         <img
           src={page.image!.url}
           alt={page.image!.caption ?? ""}
           className="h-full w-full object-cover"
         />
       </div>
-      {/* Text — bottom 40% */}
-      <div
-        className="flex flex-[2] items-center justify-center overflow-y-auto px-6 py-5"
-        style={{ background: "#fdf8f0" }}
-      >
+      {/* Text — unconstrained, grows to fit all content */}
+      <div className="px-6 pb-10 pt-5" style={{ background: "#fdf8f0" }}>
         <p
           className="font-serif text-sm leading-relaxed text-center"
           style={{ color: "#2d1f0e" }}
@@ -119,7 +116,7 @@ function ImagePage({ page }: { page: Page }) {
 
 function TextPage({ page }: { page: Page }) {
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto px-8 py-6">
+    <div className="px-8 pb-10 pt-8">
       <p
         className="font-serif text-lg leading-relaxed text-center"
         style={{ color: "#2d1f0e" }}
@@ -166,13 +163,12 @@ export default function BookReader({ story }: { story: Story }) {
         <div
           className="relative w-full max-w-[480px] overflow-hidden rounded-2xl"
           style={{
-            aspectRatio: "3/4",
             background: "#fdf8f0",
             boxShadow: "0 10px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)",
           }}
         >
           {/* Page content — keyed so each page mounts fresh and triggers the fade */}
-          <div key={current} className="book-page-anim h-full">
+          <div key={current} className="book-page-anim">
             {isTitle ? (
               <TitlePage story={story} dateLabel={dateLabel} />
             ) : page?.image ? (
@@ -272,7 +268,7 @@ export default function BookReader({ story }: { story: Story }) {
               <img
                 src={p.image.url}
                 alt={p.image.caption ?? ""}
-                style={{ width: "100%", height: "60%", objectFit: "cover", display: "block" }}
+                style={{ width: "100%", height: "auto", display: "block" }}
               />
             )}
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem 2.5rem" }}>

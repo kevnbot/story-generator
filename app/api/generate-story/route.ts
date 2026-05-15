@@ -1,9 +1,11 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
-import { generateStoryImageWithReference, applyArtStyleToReference } from "@/lib/ai/image"
-import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim } from "@/lib/ai/prompt-builder"
+import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
+import { applyArtStyleToReference } from "@/lib/ai/image"
+import { getImageProvider } from "@/lib/ai/image-providers"
+import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim, formatAge } from "@/lib/ai/prompt-builder"
+import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import {
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
   const includeImages    = body?.includeImages    as boolean  ?? false
   const parentStoryId    = body?.parentStoryId    as string   | undefined
   const feedback         = body?.feedback         as string   | undefined
+  const imageProviderId  = (body?.imageProvider   as string   | undefined) ?? "fal"
 
   if (!profileIds?.length) {
     return NextResponse.json({ error: "profileIds required" }, { status: 400 })
@@ -56,7 +59,11 @@ export async function POST(request: NextRequest) {
     .single()
 
   const lengthConfig = STORY_LENGTHS[storyLength]
-  const imagesEnabled = includeImages && !!process.env.FAL_KEY
+  const imageProviderKeyAvailable =
+    imageProviderId === "openai" ? !!process.env.OPENAI_API_KEY :
+    imageProviderId === "gemini" ? !!process.env.GEMINI_API_KEY :
+    !!process.env.FAL_KEY
+  const imagesEnabled = includeImages && imageProviderKeyAvailable
   const baseCredits = await config.creditsPerStory()
   const creditsNeeded = baseCredits + (imagesEnabled ? lengthConfig.imageCost : 0)
 
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
   const systemPrompt = t.system_prompt
 
   // Age-calibrated language guidance based on the youngest child in the story
-  const youngestAge = Math.min(...profiles.map(p => p.age))
+  const youngestAge = Math.min(...profiles.map(p => p.age + (p.age_months ?? 0) / 12))
   const ageGuidance = youngestAge <= 4
     ? "Use very simple words and short sentences a toddler can follow. Sensory details, gentle repetition, and playful sounds work well. Each page should feel like it can be read in one breath."
     : youngestAge <= 7
@@ -139,7 +146,7 @@ export async function POST(request: NextRequest) {
   const characterLines = profiles.map(p => {
     const attrs: string[] = []
     if (p.gender) attrs.push(p.gender)
-    attrs.push(`${p.age} years old`)
+    attrs.push(formatAge(p.age, p.age_months ?? 0))
     if (p.personality_tags.length > 0) attrs.push(p.personality_tags.join(", "))
     const toyName = p.toy?.name && p.toy.name !== "their favorite toy" ? p.toy.name : null
     if (toyName) {
@@ -169,13 +176,26 @@ export async function POST(request: NextRequest) {
 
 ---
 
+Story craft — write a story like this:
+- Open with the child(ren) at home near bedtime, and close with them drifting peacefully to sleep — cozy, satisfied, and safe.
+- Build a clear plot: something surprising happens, a fun problem or challenge arises, the characters work together to solve it, and there's a warm resolution before sleep.
+- Set the adventure in a whimsical, dream-like world that couldn't exist in real life — a moon made of ice cream, a cloud kingdom, a glowing underground city. Make the setting itself feel magical and surprising.
+- Introduce at least one original supporting character (a talking creature, a whimsical ruler, a magical being) with a distinct personality who drives the plot forward.
+- Give any pets or toys an active role — let them do something clever, heroic, or funny that matters to the story.
+- Give each main character a specific role or special ability in solving the problem. No one is just along for the ride.
+- Include short, lively dialogue — let characters speak, react, and surprise each other within scenes.
+- Invent a playful word or two when it fits naturally: a "scoopventure," a "dream-bubble," a "giggle-gust." Let the language itself feel magical.
+- Weave in sensory details — what things smell like, sound like, feel like, or taste like.
+
+---
+
 Begin your response with "Title: [your story title]" on its own line, then write the story.
 
 Write exactly ${lengthConfig.pages} pages. Separate each page with a line containing only "--- Page N ---" (e.g. "--- Page 1 ---", "--- Page 2 ---"). Each page should be 2-3 sentences.
 
 ${ageGuidance}
 
-Each page must describe one clear visual moment — where the characters are, what they are doing, and what is physically around them. Avoid pages that are only internal thoughts, dialogue, or abstract feelings with no visual scene.${personalityDirective}`
+Each page must describe one clear visual moment — where the characters are, what they are doing, and what is physically around them. Keep dialogue brief and grounded in a scene; avoid pages that are only internal thoughts or abstract feelings with no visual action.${personalityDirective}`
 
   // Revision context when creating a new version with feedback
   if (parentResult.data?.content && feedback?.trim()) {
@@ -244,12 +264,16 @@ Each page must describe one clear visual moment — where the characters are, wh
           const referenceProfileIds = new Set(
             profilesForReference.filter((profile) => Boolean(profile.reference_image_url)).map((profile) => profile.id)
           )
-          characterAnchor = buildCharacterAnchor(profilesForReference, {})
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
           const styleDescription = artStyle?.prompt_prefix
             ? artStyle.prompt_prefix.replace(/[,\s]+$/, "")
             : "children's picture book illustration"
+
+          send({ type: "status", message: "Reading story for illustrations…" })
+          const visuals = await extractStoryVisuals(storyPages, profilesForReference, referenceProfileIds)
+
+          characterAnchor = buildCharacterAnchor(profilesForReference, visuals.outfits)
 
           send({ type: "status", message: "Applying art style…" })
           const baseReferenceUrl = profilesForReference.find((p) => p.reference_image_url)?.reference_image_url ?? null
@@ -262,19 +286,37 @@ Each page must describe one clear visual moment — where the characters are, wh
           const storySeed = Math.floor(Math.random() * 2147483647)
 
           send({ type: "status", message: `Generating ${lengthConfig.imageCount} images…` })
-          const humanRule = "All characters are human children. Toys are separate stuffed objects held in hands — children have no animal features, fur, tails, or ears."
           pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
-            const scene = storyPages[i] ?? storyPages[storyPages.length - 1] ?? ""
-            if (referenceImageUrl) {
-              const slimAnchor = buildCharacterAnchorSlim(profilesForReference, {}, referenceProfileIds)
-              return `${scene}. ${styleDescription}. ${slimAnchor}. Maintain all characters' exact appearances from the reference image. ${humanRule}`
-            }
-            return `${scene}. ${styleDescription}. ${characterAnchor}. ${humanRule} Consistent character design throughout.`
+            const scene = visuals.scenes[i] ?? visuals.scenes[visuals.scenes.length - 1] ?? ""
+            const anchor = referenceImageUrl
+              ? buildCharacterAnchorSlim(profilesForReference, visuals.outfits, referenceProfileIds)
+              : characterAnchor
+            return buildStoryPagePrompt({ scene, styleDescription, characterAnchor: anchor, referenceAvailable: !!referenceImageUrl })
           })
 
-          const generatedUrls = await Promise.all(
-            pagePrompts.map((prompt) => generateStoryImageWithReference(prompt, referenceImageUrl, storySeed))
-          )
+          // Brief pause before the first image so the fal.ai rate limit window
+          // can settle after any setup calls (style transfer, etc.)
+          await new Promise(r => setTimeout(r, 5000))
+
+          // Sequential generation avoids rate limits that cause concurrent requests
+          // to exhaust retries and silently return null.
+          const imageProvider = getImageProvider(imageProviderId)
+          const generatedUrls: (string | null)[] = []
+          for (let imgIdx = 0; imgIdx < pagePrompts.length; imgIdx++) {
+            const url = await imageProvider.generateImage(pagePrompts[imgIdx], {
+              referenceImageUrl,
+              seed: storySeed,
+            })
+            generatedUrls.push(url)
+            if (!url) {
+              Sentry.logger.warn("Image generation returned null", {
+                provider: imageProviderId,
+                scene_index: imgIdx,
+                user_id: user.id,
+                job_id: job.id,
+              })
+            }
+          }
           for (const [sceneIndex, url] of generatedUrls.entries()) {
             if (!url) continue
 
@@ -319,7 +361,12 @@ Each page must describe one clear visual moment — where the characters are, wh
               character_anchor: characterAnchor || undefined,
               image_prompts: pagePrompts.length > 0 ? pagePrompts : undefined,
               model: "claude-sonnet-4-6",
-              image_model: imagesEnabled ? "fal-ai/flux/dev" : "",
+              image_provider: imagesEnabled ? imageProviderId : undefined,
+              image_model: imagesEnabled ? (
+                imageProviderId === "openai" ? "gpt-image-1" :
+                imageProviderId === "gemini" ? "imagen-3.0-generate-001" :
+                "fal-ai/flux/dev"
+              ) : "",
             },
             credits_used: creditsNeeded,
           })

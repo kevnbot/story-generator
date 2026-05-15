@@ -62,14 +62,37 @@ export function buildPromptSummary(
 
 // Builds a prompt for generating a neutral character reference portrait.
 export function buildReferenceImagePrompt(profile: KidProfile): string {
-  const age = formatAge(profile.age, profile.age_months ?? 0)
+  const ageMonths = profile.age_months ?? 0
+  const isInfant = profile.age === 0
+  const age = formatAge(profile.age, ageMonths)
   const humanGender = profile.gender === "girl" ? "human girl"
     : profile.gender === "boy" ? "human boy"
     : "human child"
   const appearance = buildAppearanceSummary(profile.appearance)
   const toy = buildToySummary(profile.toy)
 
-  let desc = `${profile.name}, a ${age} old ${humanGender}`
+  // Pose and framing matched to developmental stage so the model generates
+  // the correct body type rather than defaulting to a standing toddler.
+  let frameDesc: string
+  let infantExtras = ""
+  if (isInfant) {
+    infantExtras = ", chubby cheeks, round face, baby proportions"
+    if (ageMonths < 3) {
+      frameDesc = "Portrait of a newborn baby lying on their back, looking up"
+    } else if (ageMonths < 7) {
+      frameDesc = "Portrait of a baby sitting with support, facing forward"
+    } else {
+      frameDesc = "Portrait of a baby sitting up independently, facing forward"
+    }
+  } else {
+    frameDesc = "Full body portrait"
+  }
+
+  // "baby, infant" alongside the age string gives the model two strong
+  // vocabulary anchors; age numbers alone are weakly interpreted.
+  const ageLabel = isInfant ? `${age} old baby, infant` : `${age} old`
+
+  let desc = `${profile.name}, a ${ageLabel} ${humanGender}${infantExtras}`
   if (appearance) desc += ` with ${appearance}`
 
   // Toy is described as a held object — explicitly separate from the character's body
@@ -77,7 +100,9 @@ export function buildReferenceImagePrompt(profile: KidProfile): string {
     ? ` ${profile.name} is holding a toy plushie: ${toy}. The toy is a separate stuffed object in ${profile.name}'s hands, not part of ${profile.name}'s body or appearance.`
     : ""
 
-  return `Full body portrait of ${desc}. ${profile.name} is a human child, not an animal.${toyClause} Facing forward, simple white background, children's picture book character reference, clear and detailed facial features, consistent character design.`
+  const facingClause = isInfant ? "" : " Facing forward,"
+
+  return `${frameDesc} of ${desc}. ${profile.name} is a human child, not an animal.${toyClause}${facingClause} Simple white background, children's picture book character reference, clear and detailed facial features, consistent character design.`
 }
 
 // Builds a detailed character description for image prompts when no reference image is available.

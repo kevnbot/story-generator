@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import type { KidProfile } from "@/types"
+import { formatAge } from "@/lib/ai/prompt-builder"
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -96,12 +97,12 @@ export async function extractStoryVisuals(
           ? (p.toy.description ? `${toyName} (${p.toy.description})` : toyName)
           : null
         const toyStr = toyFull ? ` Toy: ${toyFull}.` : ""
-        return `- ${p.name} (${genderLabel}, age ${p.age}): appearance defined by reference image.${personality}${toyStr}`
+        return `- ${p.name} (${genderLabel}, ${formatAge(p.age, p.age_months ?? 0)}): appearance defined by reference image.${personality}${toyStr}`
       }
 
       // No reference image — include full appearance so scenes anchor the illustrator
       const skinTone = p.appearance?.skin_tone ? `, ${p.appearance.skin_tone} skin` : ""
-      return `- ${p.name} (${genderLabel}${skinTone}, age ${p.age}): ${p.prompt_summary}`
+      return `- ${p.name} (${genderLabel}${skinTone}, ${formatAge(p.age, p.age_months ?? 0)}): ${p.prompt_summary}`
     })
     .join("\n")
 
