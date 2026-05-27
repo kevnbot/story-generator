@@ -17,6 +17,7 @@ import {
 } from "@/lib/storage/images"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
+import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib/story-density"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
 
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
   const artStyleId    = body?.artStyleId    as string   | undefined
   const rawLength        = body?.storyLength       as string   | undefined
   const storyLength: StoryLength = (rawLength && rawLength in STORY_LENGTHS) ? rawLength as StoryLength : "short"
+  const rawDensity       = body?.textDensity       as string   | undefined
+  const textDensity: TextDensityKey = (rawDensity && rawDensity in TEXT_DENSITIES) ? rawDensity as TextDensityKey : DEFAULT_TEXT_DENSITY
   const storyTypeId      = body?.storyTypeId      as string   | undefined
   const storyTypeExtraInput = body?.storyTypeExtraInput as string | undefined
   const storyDescription = body?.storyDescription as string   | undefined
@@ -226,7 +229,7 @@ export async function POST(request: NextRequest) {
 
   userPrompt += `\n\n---\n\nBegin your response with "Title: [your story title]" on its own line, then write the story.
 
-Write exactly ${lengthConfig.pages} pages. Separate each page with a line containing only "--- Page N ---" (e.g. "--- Page 1 ---", "--- Page 2 ---"). Each page should be 2-3 sentences.
+Write exactly ${lengthConfig.pages} pages. Separate each page with a line containing only "--- Page N ---" (e.g. "--- Page 1 ---", "--- Page 2 ---"). ${TEXT_DENSITIES[textDensity].promptInstruction}
 
 ${ageGuidance}
 
@@ -424,6 +427,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               kid_names: profiles.map(p => p.name),
               story_template_id: t.id,
               story_type_id: storyType?.id ?? undefined,
+              text_density: textDensity,
               prompt_summary: profiles.map(p => p.prompt_summary).join(" "),
               system_prompt: systemPrompt,
               user_prompt: userPrompt,

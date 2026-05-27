@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatAge } from "@/lib/ai/prompt-builder"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
+import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensity, type TextDensityKey } from "@/lib/story-density"
 
 interface Profile {
   id: string
@@ -71,6 +72,7 @@ export function StoryGenerator({
   const [storyTypeExtraInput, setStoryTypeExtraInput] = useState("")
   const [artStyleId, setArtStyleId] = useState(artStyles[0]?.id ?? "")
   const [storyLength, setStoryLength] = useState<StoryLength>("short")
+  const [textDensity, setTextDensity] = useState<TextDensityKey>(DEFAULT_TEXT_DENSITY)
   const [storyDescription, setStoryDescription] = useState("")
   const [customTitle, setCustomTitle] = useState("")
   const [includeImages, setIncludeImages] = useState(false)
@@ -113,6 +115,7 @@ export function StoryGenerator({
     setStoryId(null)
     setErrorMsg("")
     setStoryLength("short")
+    setTextDensity(DEFAULT_TEXT_DENSITY)
     setStoryDescription("")
     setFeedback("")
     setCustomTitle("")
@@ -136,6 +139,7 @@ export function StoryGenerator({
           artStyleId: artStyleId || undefined,
           storyLength,
           storyTypeId: storyTypeId || undefined,
+          textDensity,
           storyTypeExtraInput: storyTypeExtraInput.trim() || undefined,
           storyDescription: storyDescription.trim() || undefined,
           customTitle: customTitle.trim() || undefined,
@@ -429,6 +433,28 @@ export function StoryGenerator({
                   <div className="text-xs text-muted-foreground">
                     +{cfg.imageCost} image credit{cfg.imageCost !== 1 ? "s" : ""}
                   </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Text density */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Text per page</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.values(TEXT_DENSITIES) as TextDensity[]).map(density => (
+                <button
+                  key={density.id}
+                  type="button"
+                  onClick={() => setTextDensity(density.id)}
+                  className={`p-3 rounded-lg border text-left transition-colors ${
+                    textDensity === density.id
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-input bg-background hover:bg-accent"
+                  }`}
+                >
+                  <div className="font-medium text-sm">{density.name}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{density.description}</div>
                 </button>
               ))}
             </div>
