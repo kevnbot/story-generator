@@ -48,8 +48,10 @@ const mocks = vi.hoisted(() => {
               personality_tags: ["curious"],
               toy: { name: "Moon Bear" },
               prompt_summary: "Luna is curious.",
-              reference_image_path: null,
+              reference_image_path: "illustrations/luna.jpg",
               reference_image_url: null,
+              combined_reference_path: null,
+              character_illustration_path: null,
               deleted_at: null,
               created_at: "2026-05-01T00:00:00.000Z",
               updated_at: "2026-05-01T00:00:00.000Z",
@@ -118,6 +120,16 @@ vi.mock("@/lib/ai/story", () => ({
   extractStoryVisuals: vi.fn(),
   generateStoryStream: mocks.generateStoryStream,
   splitStoryPages: vi.fn((content: string) => [content]),
+}))
+
+vi.mock("@/lib/ai/prompt-builder/visual-context", () => ({
+  extractVisualContext: vi.fn(async () => ({
+    setting: "",
+    timeOfDay: "evening",
+    recurringElements: [],
+    outfits: {},
+    pageScenes: [],
+  })),
 }))
 
 async function readResponseText(response: Response) {

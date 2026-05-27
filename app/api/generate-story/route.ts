@@ -1,9 +1,11 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { generateStoryStream, extractStoryTitle, splitStoryPages, extractStoryVisuals } from "@/lib/ai/story"
+import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
+import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 import { applyArtStyleToReference } from "@/lib/ai/image"
-import { getImageProvider } from "@/lib/ai/image-providers"
+import { getImageProvider } from "@/lib/ai/providers/image/registry"
+import type { ImageResult } from "@/lib/ai/providers/image/types"
 import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim, formatAge } from "@/lib/ai/prompt-builder"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
@@ -15,6 +17,8 @@ import {
 } from "@/lib/storage/images"
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
+
+const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -136,6 +140,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Story type not found" }, { status: 404 })
   }
   const storyType = storyTypeResult.data as StoryTypeRow | null
+
+  const profilesMissingIllustrations = profiles.filter(
+    p => !p.combined_reference_path && !p.character_illustration_path && !p.reference_image_path
+  )
+  if (profilesMissingIllustrations.length > 0) {
+    const missingNames = profilesMissingIllustrations.map(p => p.name).join(", ")
+    return NextResponse.json(
+      { error: `Character illustrations are not ready for: ${missingNames}. Please visit their profile to generate an illustration before creating a story.` },
+      { status: 400 }
+    )
+  }
 
   // Determine version number
   let versionNumber = 1
@@ -301,9 +316,13 @@ Each page must describe one clear visual moment — where the characters are, wh
             : "children's picture book illustration"
 
           send({ type: "status", message: "Reading story for illustrations…" })
-          const visuals = await extractStoryVisuals(storyPages, profilesForReference, referenceProfileIds)
+          const characterNames = profiles.map(p => p.name)
+          const toyNames = profiles
+            .map(p => p.toy?.name)
+            .filter((name): name is string => Boolean(name) && name !== "their favorite toy")
+          const visualContext = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
 
-          characterAnchor = buildCharacterAnchor(profilesForReference, visuals.outfits)
+          characterAnchor = buildCharacterAnchor(profilesForReference, {})
 
           send({ type: "status", message: "Applying art style…" })
           const baseReferenceUrl = profilesForReference.find((p) => p.reference_image_url)?.reference_image_url ?? null
@@ -317,11 +336,19 @@ Each page must describe one clear visual moment — where the characters are, wh
 
           send({ type: "status", message: `Generating ${lengthConfig.imageCount} images…` })
           pagePrompts = Array.from({ length: lengthConfig.imageCount }, (_, i) => {
-            const scene = visuals.scenes[i] ?? visuals.scenes[visuals.scenes.length - 1] ?? ""
+            const pageScene = visualContext.pageScenes[i]
+              ?? visualContext.pageScenes[visualContext.pageScenes.length - 1]
+              ?? { pageIndex: i, text: "", action: "", characters: [], toys: [], setting: "", mood: "warm" }
             const anchor = referenceImageUrl
-              ? buildCharacterAnchorSlim(profilesForReference, visuals.outfits, referenceProfileIds)
+              ? buildCharacterAnchorSlim(profilesForReference, {}, referenceProfileIds)
               : characterAnchor
-            return buildStoryPagePrompt({ scene, styleDescription, characterAnchor: anchor, referenceAvailable: !!referenceImageUrl })
+            return buildStoryPagePrompt({
+              scene: pageScene,
+              visualContext,
+              artStylePrefix: styleDescription,
+              referenceAvailable: !!referenceImageUrl,
+              characterDescriptions: anchor,
+            })
           })
 
           // Brief pause before the first image so the fal.ai rate limit window
@@ -331,28 +358,47 @@ Each page must describe one clear visual moment — where the characters are, wh
           // Sequential generation avoids rate limits that cause concurrent requests
           // to exhaust retries and silently return null.
           const imageProvider = getImageProvider(imageProviderId)
-          const generatedUrls: (string | null)[] = []
+          const generatedResults: ImageResult[] = []
           for (let imgIdx = 0; imgIdx < pagePrompts.length; imgIdx++) {
-            const url = await imageProvider.generateImage(pagePrompts[imgIdx], {
+            const result = await imageProvider.generateImage(pagePrompts[imgIdx], {
               referenceImageUrl,
               seed: storySeed,
             })
-            generatedUrls.push(url)
-            if (!url) {
+            generatedResults.push(result)
+            if (result.url === null) {
               Sentry.logger.warn("Image generation returned null", {
                 provider: imageProviderId,
                 scene_index: imgIdx,
                 user_id: user.id,
                 job_id: job.id,
+                attempts: result.attempts,
+              })
+            } else if (result.isBlackImage) {
+              Sentry.logger.warn("Image generation returned black image", {
+                provider: imageProviderId,
+                scene_index: imgIdx,
+                user_id: user.id,
+                job_id: job.id,
+                attempts: result.attempts,
+                flagged_url: result.url,
               })
             }
           }
-          for (const [sceneIndex, url] of generatedUrls.entries()) {
-            if (!url) continue
+          for (const [sceneIndex, result] of generatedResults.entries()) {
+            if (result.url === null || result.isBlackImage) {
+              Sentry.logger.warn("Image generation using error placeholder", {
+                provider: imageProviderId,
+                scene_index: sceneIndex,
+                job_id: job.id,
+                reason: result.url === null ? "null_url" : "black_image",
+              })
+              images.push({ url: STORY_IMAGE_ERROR_PATH, caption: null, scene_index: sceneIndex })
+              continue
+            }
 
             const storedPath = await copyRemoteImageToStoragePath({
               supabase: service,
-              sourceUrl: url,
+              sourceUrl: result.url,
               buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
             })
 
@@ -360,7 +406,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               images.push({ path: storedPath, caption: null, scene_index: sceneIndex })
             } else {
               // Keep legacy URL fallback only when storage upload fails.
-              images.push({ url, caption: null, scene_index: sceneIndex })
+              images.push({ url: result.url, caption: null, scene_index: sceneIndex })
             }
           }
         }

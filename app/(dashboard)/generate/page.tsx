@@ -25,7 +25,7 @@ export default async function GeneratePage({
     userRow
       ? service
           .from("kid_profiles")
-          .select("id, name, age, age_months")
+          .select("id, name, age, age_months, reference_image_path, combined_reference_path, character_illustration_path")
           .eq("account_id", userRow.account_id)
           .is("deleted_at", null)
           .order("created_at", { ascending: true })

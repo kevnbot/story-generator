@@ -63,6 +63,8 @@ export interface KidProfile {
   prompt_summary: string
   reference_image_path: string | null
   reference_image_url: string | null
+  combined_reference_path: string | null
+  character_illustration_path: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string

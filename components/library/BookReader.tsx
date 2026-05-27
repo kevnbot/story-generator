@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, Download, ScrollText } from "lucide-react"
 import { Story, StoryImage } from "@/types"
 import PromptModal from "./PromptModal"
 
+const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
+
 // ─── Page model ───────────────────────────────────────────────────────────────
 
 interface Page {
@@ -91,18 +93,24 @@ function TitlePage({ story, dateLabel }: { story: Story; dateLabel: string }) {
 }
 
 function ImagePage({ page }: { page: Page }) {
+  const isErrorPlaceholder = page.image!.url === STORY_IMAGE_ERROR_PATH
   return (
     <div className="flex flex-col">
       {/* Image at its natural landscape 4:3 ratio — no cropping */}
       <div className="aspect-[4/3] w-full">
         <img
           src={page.image!.url}
-          alt={page.image!.caption ?? ""}
+          alt={isErrorPlaceholder ? "" : (page.image!.caption ?? "")}
           className="h-full w-full object-cover"
         />
       </div>
       {/* Text — unconstrained, grows to fit all content */}
       <div className="px-6 pb-10 pt-5" style={{ background: "#fdf8f0" }}>
+        {isErrorPlaceholder && (
+          <p className="mb-3 text-center text-xs text-muted-foreground">
+            We had trouble creating this illustration
+          </p>
+        )}
         <p
           className="font-serif text-sm leading-relaxed text-center"
           style={{ color: "#2d1f0e" }}
@@ -262,22 +270,30 @@ export default function BookReader({ story }: { story: Story }) {
         </div>
 
         {/* Content pages */}
-        {pages.map((p, i) => (
-          <div key={i} className="print-page" style={{ background: "#fdf8f0" }}>
-            {p.image && (
-              <img
-                src={p.image.url}
-                alt={p.image.caption ?? ""}
-                style={{ width: "100%", height: "auto", display: "block" }}
-              />
-            )}
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem 2.5rem" }}>
-              <p style={{ fontFamily: "Georgia, serif", fontSize: "1.15rem", lineHeight: 1.85, color: "#2d1f0e", textAlign: "center", margin: 0 }}>
-                {p.text}
-              </p>
+        {pages.map((p, i) => {
+          const isPrintError = p.image?.url === STORY_IMAGE_ERROR_PATH
+          return (
+            <div key={i} className="print-page" style={{ background: "#fdf8f0" }}>
+              {p.image && (
+                <img
+                  src={p.image.url}
+                  alt={isPrintError ? "" : (p.image.caption ?? "")}
+                  style={{ width: "100%", height: "auto", display: "block" }}
+                />
+              )}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1.5rem 2.5rem" }}>
+                {isPrintError && (
+                  <p style={{ fontFamily: "sans-serif", fontSize: "0.75rem", color: "#9ca3af", marginBottom: "0.75rem", textAlign: "center" }}>
+                    We had trouble creating this illustration
+                  </p>
+                )}
+                <p style={{ fontFamily: "Georgia, serif", fontSize: "1.15rem", lineHeight: 1.85, color: "#2d1f0e", textAlign: "center", margin: 0 }}>
+                  {p.text}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <style>{`

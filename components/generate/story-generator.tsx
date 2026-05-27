@@ -12,6 +12,13 @@ interface Profile {
   name: string
   age: number
   age_months: number
+  reference_image_path?: string | null
+  combined_reference_path?: string | null
+  character_illustration_path?: string | null
+}
+
+function hasIllustration(p: Profile): boolean {
+  return !!(p.combined_reference_path || p.character_illustration_path || p.reference_image_path)
 }
 
 interface ArtStyle {
@@ -47,16 +54,17 @@ type StreamChunk =
 export function StoryGenerator({
   profiles,
   artStyles,
-  storyTypes,
+  storyTypes = [],
   credits,
   imagesAvailable,
   parentStoryId,
   parentStoryTitle,
   defaultProfileIds = [],
 }: StoryGeneratorProps) {
+  const eligibleProfileIds = profiles.filter(hasIllustration).map(p => p.id)
   const initialIds = defaultProfileIds.length > 0
     ? new Set(defaultProfileIds)
-    : new Set(profiles.map(p => p.id))
+    : new Set(eligibleProfileIds)
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
   const [storyTypeId, setStoryTypeId] = useState(storyTypes[0]?.id ?? "")
@@ -82,6 +90,8 @@ export function StoryGenerator({
     statusMessage.toLowerCase().startsWith("illustrating")
 
   function toggleProfile(id: string) {
+    const profile = profiles.find(p => p.id === id)
+    if (!profile || !hasIllustration(profile)) return
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -303,18 +313,23 @@ export function StoryGenerator({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {profiles.map(p => {
                 const isSelected = selectedIds.has(p.id)
+                const isDisabled = !hasIllustration(p)
                 return (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => toggleProfile(p.id)}
+                    disabled={isDisabled}
+                    title={isDisabled ? "Illustration needed — visit profile" : undefined}
                     className={`p-3 rounded-lg border text-left transition-colors relative ${
-                      isSelected
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-input bg-background hover:bg-accent"
+                      isDisabled
+                        ? "border-input bg-muted opacity-50 cursor-not-allowed"
+                        : isSelected
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-input bg-background hover:bg-accent"
                     }`}
                   >
-                    {profiles.length > 1 && (
+                    {!isDisabled && profiles.length > 1 && (
                       <span
                         className={`absolute top-2 right-2 w-4 h-4 rounded-sm border flex items-center justify-center text-[10px] font-bold transition-colors ${
                           isSelected
@@ -327,6 +342,9 @@ export function StoryGenerator({
                     )}
                     <div className="font-medium text-sm pr-5">{p.name}</div>
                     <div className="text-xs text-muted-foreground">{formatAge(p.age, p.age_months ?? 0)}</div>
+                    {isDisabled && (
+                      <div className="text-xs text-amber-600 mt-0.5">Illustration needed</div>
+                    )}
                   </button>
                 )
               })}

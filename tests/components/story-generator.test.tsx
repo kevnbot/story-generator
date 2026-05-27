@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest"
 import { StoryGenerator } from "@/components/generate/story-generator"
 
 const profiles = [
-  { id: "kid-luna", name: "Luna", age: 6, age_months: 3 },
-  { id: "kid-max", name: "Max", age: 4, age_months: 0 },
+  { id: "kid-luna", name: "Luna", age: 6, age_months: 3, reference_image_path: "/illustrations/luna.jpg" },
+  { id: "kid-max", name: "Max", age: 4, age_months: 0, reference_image_path: "/illustrations/max.jpg" },
 ]
 
 const artStyles = [{ id: "watercolor", name: "Watercolor" }]
