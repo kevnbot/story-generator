@@ -19,9 +19,18 @@ interface ArtStyle {
   name: string
 }
 
+interface StoryType {
+  id: string
+  name: string
+  description: string
+  extra_input_label: string | null
+  extra_input_hint: string | null
+}
+
 interface StoryGeneratorProps {
   profiles: Profile[]
   artStyles: ArtStyle[]
+  storyTypes: StoryType[]
   credits: number
   imagesAvailable: boolean
   parentStoryId?: string
@@ -38,6 +47,7 @@ type StreamChunk =
 export function StoryGenerator({
   profiles,
   artStyles,
+  storyTypes,
   credits,
   imagesAvailable,
   parentStoryId,
@@ -49,6 +59,8 @@ export function StoryGenerator({
     : new Set(profiles.map(p => p.id))
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
+  const [storyTypeId, setStoryTypeId] = useState(storyTypes[0]?.id ?? "")
+  const [storyTypeExtraInput, setStoryTypeExtraInput] = useState("")
   const [artStyleId, setArtStyleId] = useState(artStyles[0]?.id ?? "")
   const [storyLength, setStoryLength] = useState<StoryLength>("short")
   const [storyDescription, setStoryDescription] = useState("")
@@ -82,6 +94,8 @@ export function StoryGenerator({
     })
   }
 
+  const selectedStoryType = storyTypes.find(t => t.id === storyTypeId) ?? null
+
   function reset() {
     setStatus("idle")
     setStatusMessage("")
@@ -92,6 +106,8 @@ export function StoryGenerator({
     setStoryDescription("")
     setFeedback("")
     setCustomTitle("")
+    setStoryTypeId(storyTypes[0]?.id ?? "")
+    setStoryTypeExtraInput("")
   }
 
   async function generate() {
@@ -109,6 +125,8 @@ export function StoryGenerator({
           profileIds: [...selectedIds],
           artStyleId: artStyleId || undefined,
           storyLength,
+          storyTypeId: storyTypeId || undefined,
+          storyTypeExtraInput: storyTypeExtraInput.trim() || undefined,
           storyDescription: storyDescription.trim() || undefined,
           customTitle: customTitle.trim() || undefined,
           includeImages,
@@ -319,6 +337,46 @@ export function StoryGenerator({
               </p>
             )}
           </div>
+
+          {/* Story type selector */}
+          {storyTypes.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Story type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {storyTypes.map(type => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => {
+                      setStoryTypeId(type.id)
+                      setStoryTypeExtraInput("")
+                    }}
+                    className={`p-3 rounded-lg border text-left transition-colors ${
+                      storyTypeId === type.id
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-input bg-background hover:bg-accent"
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{type.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{type.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Conditional extra input for story types that require it */}
+          {selectedStoryType?.extra_input_label && (
+            <div className="space-y-1.5">
+              <Label htmlFor="story-type-extra">{selectedStoryType.extra_input_label}</Label>
+              <Input
+                id="story-type-extra"
+                placeholder={selectedStoryType.extra_input_hint ?? ""}
+                value={storyTypeExtraInput}
+                onChange={e => setStoryTypeExtraInput(e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Title */}
           <div className="space-y-1.5">

@@ -21,7 +21,7 @@ export default async function GeneratePage({
     .eq("id", user.id)
     .single()
 
-  const [profilesResult, accountResult, parentResult, artStylesResult] = await Promise.all([
+  const [profilesResult, accountResult, parentResult, artStylesResult, storyTypesResult] = await Promise.all([
     userRow
       ? service
           .from("kid_profiles")
@@ -51,6 +51,11 @@ export default async function GeneratePage({
       .select("id, name")
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
+    service
+      .from("story_types")
+      .select("id, name, description, extra_input_label, extra_input_hint")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
   ])
 
   const parent = parentResult.data
@@ -62,6 +67,7 @@ export default async function GeneratePage({
     <StoryGenerator
       profiles={profilesResult.data ?? []}
       artStyles={artStylesResult.data ?? []}
+      storyTypes={storyTypesResult.data ?? []}
       credits={accountResult.data?.credit_balance ?? 0}
       imagesAvailable={!!process.env.FAL_KEY}
       parentStoryId={parent?.id}

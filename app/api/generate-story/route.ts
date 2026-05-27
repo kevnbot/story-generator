@@ -26,6 +26,8 @@ export async function POST(request: NextRequest) {
   const artStyleId    = body?.artStyleId    as string   | undefined
   const rawLength        = body?.storyLength       as string   | undefined
   const storyLength: StoryLength = (rawLength && rawLength in STORY_LENGTHS) ? rawLength as StoryLength : "short"
+  const storyTypeId      = body?.storyTypeId      as string   | undefined
+  const storyTypeExtraInput = body?.storyTypeExtraInput as string | undefined
   const storyDescription = body?.storyDescription as string   | undefined
   const customTitle      = body?.customTitle      as string   | undefined
   const includeImages    = body?.includeImages    as boolean  ?? false
@@ -71,8 +73,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
   }
 
-  // Fetch profiles, template, parent story, and default art style in parallel
-  const [profilesResult, { data: template }, parentResult, { data: artStyle }] = await Promise.all([
+  type StoryTypeRow = {
+    id: string
+    name: string
+    system_prompt_suffix: string
+    structure_template: string
+    page_guidance: { first: string; middle: string; last: string }
+    extra_input_label: string | null
+  }
+
+  // Fetch profiles, template, parent story, default art style, and story type in parallel
+  const [profilesResult, { data: template }, parentResult, { data: artStyle }, storyTypeResult] = await Promise.all([
     service
       .from("kid_profiles")
       .select("*")
@@ -103,6 +114,14 @@ export async function POST(request: NextRequest) {
           .eq("is_active", true)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    storyTypeId
+      ? service
+          .from("story_types")
+          .select("id, name, system_prompt_suffix, structure_template, page_guidance, extra_input_label")
+          .eq("id", storyTypeId)
+          .eq("is_active", true)
+          .single()
+      : Promise.resolve({ data: null }),
   ])
 
   const profiles = profilesResult.data as KidProfile[] | null
@@ -112,6 +131,11 @@ export async function POST(request: NextRequest) {
   if (parentStoryId && !parentResult.data) {
     return NextResponse.json({ error: "Parent story not found" }, { status: 404 })
   }
+
+  if (storyTypeId && !storyTypeResult.data) {
+    return NextResponse.json({ error: "Story type not found" }, { status: 404 })
+  }
+  const storyType = storyTypeResult.data as StoryTypeRow | null
 
   // Determine version number
   let versionNumber = 1
@@ -126,7 +150,9 @@ export async function POST(request: NextRequest) {
   }
 
   const t = template as StoryTemplate
-  const systemPrompt = t.system_prompt
+  const systemPrompt = storyType
+    ? `${t.system_prompt}\n\n${storyType.system_prompt_suffix}`
+    : t.system_prompt
 
   // Age-calibrated language guidance based on the youngest child in the story
   const youngestAge = Math.min(...profiles.map(p => p.age + (p.age_months ?? 0) / 12))
@@ -169,14 +195,19 @@ export async function POST(request: NextRequest) {
   let userPrompt = `${characterLabel}:\n${characterLines}`
 
   if (storyDescription?.trim()) {
-    userPrompt = `${userPrompt}\n\nStory request: ${storyDescription.trim()}`
+    userPrompt += `\n\nStory request: ${storyDescription.trim()}`
   }
 
-  userPrompt = `${userPrompt}
-
----
-
-Story craft — write a story like this:
+  if (storyType) {
+    const pg = storyType.page_guidance
+    userPrompt += `\n\n---\n\nNarrative arc:\n${storyType.structure_template}`
+    userPrompt += `\n\nPage guidance:\n- Opening pages: ${pg.first}\n- Middle pages: ${pg.middle}\n- Final pages: ${pg.last}`
+    if (storyTypeExtraInput?.trim()) {
+      const label = storyType.extra_input_label ?? "Additional context"
+      userPrompt += `\n\n${label}: ${storyTypeExtraInput.trim()}`
+    }
+  } else {
+    userPrompt += `\n\n---\n\nStory craft — write a story like this:
 - Open with the child(ren) at home near bedtime, and close with them drifting peacefully to sleep — cozy, satisfied, and safe.
 - Build a clear plot: something surprising happens, a fun problem or challenge arises, the characters work together to solve it, and there's a warm resolution before sleep.
 - Set the adventure in a whimsical, dream-like world that couldn't exist in real life — a moon made of ice cream, a cloud kingdom, a glowing underground city. Make the setting itself feel magical and surprising.
@@ -185,11 +216,10 @@ Story craft — write a story like this:
 - Give each main character a specific role or special ability in solving the problem. No one is just along for the ride.
 - Include short, lively dialogue — let characters speak, react, and surprise each other within scenes.
 - Invent a playful word or two when it fits naturally: a "scoopventure," a "dream-bubble," a "giggle-gust." Let the language itself feel magical.
-- Weave in sensory details — what things smell like, sound like, feel like, or taste like.
+- Weave in sensory details — what things smell like, sound like, feel like, or taste like.`
+  }
 
----
-
-Begin your response with "Title: [your story title]" on its own line, then write the story.
+  userPrompt += `\n\n---\n\nBegin your response with "Title: [your story title]" on its own line, then write the story.
 
 Write exactly ${lengthConfig.pages} pages. Separate each page with a line containing only "--- Page N ---" (e.g. "--- Page 1 ---", "--- Page 2 ---"). Each page should be 2-3 sentences.
 
@@ -354,6 +384,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               kid_profile_ids: profiles.map(p => p.id),
               kid_names: profiles.map(p => p.name),
               story_template_id: t.id,
+              story_type_id: storyType?.id ?? undefined,
               prompt_summary: profiles.map(p => p.prompt_summary).join(" "),
               system_prompt: systemPrompt,
               user_prompt: userPrompt,
