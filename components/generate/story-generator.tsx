@@ -84,7 +84,7 @@ export function StoryGenerator({
   const lengthConfig = STORY_LENGTHS[storyLength]
   const imageCost = includeImages && imagesAvailable ? lengthConfig.imageCost : 0
   const creditsNeeded = 1 + imageCost
-  const canGenerate = selectedIds.size > 0 && credits >= creditsNeeded && status !== "generating"
+  const canGenerate = selectedIds.size > 0 && !!storyTypeId && credits >= creditsNeeded && status !== "generating"
 
   const isIllustrating = statusMessage.toLowerCase().startsWith("generating") ||
     statusMessage.toLowerCase().startsWith("illustrating")

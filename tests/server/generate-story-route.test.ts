@@ -69,6 +69,19 @@ const mocks = vi.hoisted(() => {
           error: null,
         }
       }
+      if (this.table === "story_types") {
+        return {
+          data: {
+            id: "bedtime",
+            name: "Bedtime Story",
+            system_prompt_suffix: "This is a bedtime story.",
+            structure_template: "A gentle arc ending in sleep.",
+            page_guidance: { first: "Set the scene.", middle: "Gentle adventure.", last: "Fall asleep." },
+            extra_input_label: null,
+          },
+          error: null,
+        }
+      }
       if (this.table === "generation_jobs" && this.action === "insert") return { data: { id: "job-1" }, error: null }
       if (this.table === "stories" && this.action === "insert") return { data: { id: "story-1" }, error: null }
       return { data: null, error: null }
@@ -180,7 +193,7 @@ describe("POST /api/generate-story", () => {
     const response = await POST(
       new Request("http://test.local/api/generate-story", {
         method: "POST",
-        body: JSON.stringify({ profileIds: ["kid-luna"], storyLength: "short", storyDescription: "moon bedtime" }),
+        body: JSON.stringify({ profileIds: ["kid-luna"], storyLength: "short", storyDescription: "moon bedtime", storyTypeId: "bedtime" }),
       }) as NextRequest
     )
     const text = await readResponseText(response)
@@ -217,7 +230,7 @@ describe("POST /api/generate-story", () => {
     const response = await POST(
       new Request("http://test.local/api/generate-story", {
         method: "POST",
-        body: JSON.stringify({ profileIds: ["kid-luna"], storyLength: "short" }),
+        body: JSON.stringify({ profileIds: ["kid-luna"], storyLength: "short", storyTypeId: "bedtime" }),
       }) as NextRequest
     )
     const text = await readResponseText(response)

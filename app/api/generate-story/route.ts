@@ -136,10 +136,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Parent story not found" }, { status: 404 })
   }
 
-  if (storyTypeId && !storyTypeResult.data) {
+  if (!storyTypeId) {
+    return NextResponse.json({ error: "A story type is required." }, { status: 400 })
+  }
+  if (!storyTypeResult.data) {
     return NextResponse.json({ error: "Story type not found" }, { status: 404 })
   }
-  const storyType = storyTypeResult.data as StoryTypeRow | null
+  const storyType = storyTypeResult.data as StoryTypeRow
 
   const profilesMissingIllustrations = profiles.filter(
     p => !p.combined_reference_path && !p.character_illustration_path && !p.reference_image_path
@@ -213,25 +216,12 @@ export async function POST(request: NextRequest) {
     userPrompt += `\n\nStory request: ${storyDescription.trim()}`
   }
 
-  if (storyType) {
-    const pg = storyType.page_guidance
-    userPrompt += `\n\n---\n\nNarrative arc:\n${storyType.structure_template}`
-    userPrompt += `\n\nPage guidance:\n- Opening pages: ${pg.first}\n- Middle pages: ${pg.middle}\n- Final pages: ${pg.last}`
-    if (storyTypeExtraInput?.trim()) {
-      const label = storyType.extra_input_label ?? "Additional context"
-      userPrompt += `\n\n${label}: ${storyTypeExtraInput.trim()}`
-    }
-  } else {
-    userPrompt += `\n\n---\n\nStory craft — write a story like this:
-- Open with the child(ren) at home near bedtime, and close with them drifting peacefully to sleep — cozy, satisfied, and safe.
-- Build a clear plot: something surprising happens, a fun problem or challenge arises, the characters work together to solve it, and there's a warm resolution before sleep.
-- Set the adventure in a whimsical, dream-like world that couldn't exist in real life — a moon made of ice cream, a cloud kingdom, a glowing underground city. Make the setting itself feel magical and surprising.
-- Introduce at least one original supporting character (a talking creature, a whimsical ruler, a magical being) with a distinct personality who drives the plot forward.
-- Give any pets or toys an active role — let them do something clever, heroic, or funny that matters to the story.
-- Give each main character a specific role or special ability in solving the problem. No one is just along for the ride.
-- Include short, lively dialogue — let characters speak, react, and surprise each other within scenes.
-- Invent a playful word or two when it fits naturally: a "scoopventure," a "dream-bubble," a "giggle-gust." Let the language itself feel magical.
-- Weave in sensory details — what things smell like, sound like, feel like, or taste like.`
+  const pg = storyType.page_guidance
+  userPrompt += `\n\n---\n\nNarrative arc:\n${storyType.structure_template}`
+  userPrompt += `\n\nPage guidance:\n- Opening pages: ${pg.first}\n- Middle pages: ${pg.middle}\n- Final pages: ${pg.last}`
+  if (storyTypeExtraInput?.trim()) {
+    const label = storyType.extra_input_label ?? "Additional context"
+    userPrompt += `\n\n${label}: ${storyTypeExtraInput.trim()}`
   }
 
   userPrompt += `\n\n---\n\nBegin your response with "Title: [your story title]" on its own line, then write the story.
@@ -274,6 +264,9 @@ Each page must describe one clear visual moment — where the characters are, wh
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"))
 
       try {
+        // TEMP: remove before shipping
+        console.log("=== SYSTEM PROMPT ===\n", systemPrompt)
+        console.log("=== USER PROMPT ===\n", userPrompt)
         for await (const chunk of generateStoryStream(systemPrompt, userPrompt)) {
           fullText += chunk
           send({ type: "chunk", text: chunk })

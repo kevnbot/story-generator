@@ -9,6 +9,7 @@ const profiles = [
 ]
 
 const artStyles = [{ id: "watercolor", name: "Watercolor" }]
+const storyTypes = [{ id: "adventure", name: "Adventure", description: "An exciting adventure!", extra_input_label: null, extra_input_hint: null }]
 
 function streamResponse(lines: object[]) {
   const encoder = new TextEncoder()
@@ -53,7 +54,7 @@ describe("StoryGenerator", () => {
     )
     vi.stubGlobal("fetch", fetchMock)
 
-    render(<StoryGenerator profiles={profiles} artStyles={artStyles} credits={8} imagesAvailable={true} />)
+    render(<StoryGenerator profiles={profiles} artStyles={artStyles} storyTypes={storyTypes} credits={8} imagesAvailable={true} />)
 
     await user.click(screen.getByRole("button", { name: /Medium/ }))
     await user.type(screen.getByLabelText(/Title/), "Rocket Bedtime")
@@ -88,7 +89,7 @@ describe("StoryGenerator", () => {
       vi.fn(async () => new Response(JSON.stringify({ error: "Insufficient credits" }), { status: 402 }))
     )
 
-    render(<StoryGenerator profiles={profiles} artStyles={artStyles} credits={8} imagesAvailable={false} />)
+    render(<StoryGenerator profiles={profiles} artStyles={artStyles} storyTypes={storyTypes} credits={8} imagesAvailable={false} />)
 
     await user.click(screen.getByRole("button", { name: "Generate Story" }))
 
