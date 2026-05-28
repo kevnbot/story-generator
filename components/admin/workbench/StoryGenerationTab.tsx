@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib/story-density"
@@ -62,6 +63,30 @@ interface StoryGenerationTabProps {
   profiles: Profile[]
   storyTypes: StoryType[]
   artStyles: ArtStyle[]
+}
+
+interface BuildPromptsResult {
+  systemPrompt: string
+  userPrompt: string
+  storyTypeContribution: {
+    systemPromptSuffix: string
+    structureTemplate: string
+    pageGuidance: { first: string; middle: string; last: string }
+  }
+  tokenCounts: {
+    system: number
+    user: number
+    combined: number
+    contextWindowPercent: number
+  }
+  meta: {
+    profileCount: number
+    storyTypeId: string
+    storyTypeName: string
+    storyLength: string
+    textDensity: string
+    pageCount: number
+  }
 }
 
 // ─── Provider context ─────────────────────────────────────────────────────────
@@ -230,6 +255,151 @@ function ProfileCard({ profile }: { profile: Profile }) {
   )
 }
 
+function PromptPreBlock({ label, content }: { label: string; content: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 overflow-hidden">
+      <div className="px-3 py-1.5 border-b border-border">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      </div>
+      <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+        {content}
+      </pre>
+    </div>
+  )
+}
+
+function Stage1Card({ result }: { result: BuildPromptsResult }) {
+  const [showStoryType, setShowStoryType] = useState(false)
+  const [showSystem, setShowSystem] = useState(false)
+  const [showUser, setShowUser] = useState(false)
+  const [copiedSystem, setCopiedSystem] = useState(false)
+  const [copiedUser, setCopiedUser] = useState(false)
+
+  const { tokenCounts } = result
+  const isHighUsage = tokenCounts.contextWindowPercent > 20
+
+  function copyText(text: string, setCopied: (v: boolean) => void) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 1 — Prompt Builder</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+          ✓ complete
+        </span>
+      </div>
+
+      {/* Token summary */}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <div className="flex items-center gap-3 flex-wrap text-xs">
+          <span>System: <span className="font-mono font-medium">{tokenCounts.system.toLocaleString()}</span> tokens</span>
+          <span className="text-muted-foreground">·</span>
+          <span>User: <span className="font-mono font-medium">{tokenCounts.user.toLocaleString()}</span> tokens</span>
+          <span className="text-muted-foreground">·</span>
+          <span>Combined: <span className="font-mono font-medium">{tokenCounts.combined.toLocaleString()}</span> tokens</span>
+          <span className="text-muted-foreground">({tokenCounts.contextWindowPercent}% of context window)</span>
+          {isHighUsage && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 text-[10px] font-medium">
+              ⚠ High token usage
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Story Type Contribution */}
+      <div className="border-b border-border">
+        <button
+          type="button"
+          onClick={() => setShowStoryType(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+        >
+          <span>Story Type Contribution</span>
+          {showStoryType
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        {showStoryType && (
+          <div className="px-4 pb-4 space-y-3">
+            <PromptPreBlock label="System Prompt Suffix" content={result.storyTypeContribution.systemPromptSuffix} />
+            <PromptPreBlock label="Structure Template" content={result.storyTypeContribution.structureTemplate} />
+            <PromptPreBlock label="Opening Pages" content={result.storyTypeContribution.pageGuidance.first} />
+            <PromptPreBlock label="Middle Pages" content={result.storyTypeContribution.pageGuidance.middle} />
+            <PromptPreBlock label="Final Pages" content={result.storyTypeContribution.pageGuidance.last} />
+          </div>
+        )}
+      </div>
+
+      {/* System Prompt */}
+      <div className="border-b border-border">
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setShowSystem(v => !v)}
+            className="flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
+          >
+            {showSystem
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            System Prompt
+          </button>
+          <button
+            type="button"
+            onClick={() => copyText(result.systemPrompt, setCopiedSystem)}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+          >
+            {copiedSystem ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copiedSystem ? "Copied" : "Copy"}
+          </button>
+        </div>
+        {showSystem && (
+          <div className="px-4 pb-4">
+            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-3 bg-muted/40 rounded-lg font-mono text-[12px] leading-relaxed text-foreground">
+              {result.systemPrompt}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* User Prompt */}
+      <div>
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setShowUser(v => !v)}
+            className="flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
+          >
+            {showUser
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            User Prompt
+          </button>
+          <button
+            type="button"
+            onClick={() => copyText(result.userPrompt, setCopiedUser)}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+          >
+            {copiedUser ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copiedUser ? "Copied" : "Copy"}
+          </button>
+        </div>
+        {showUser && (
+          <div className="px-4 pb-4">
+            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-3 bg-muted/40 rounded-lg font-mono text-[12px] leading-relaxed text-foreground">
+              {result.userPrompt}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGenerationTabProps) {
@@ -244,6 +414,10 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [imageProvider, setImageProvider] = useState("fal")
   const [includeImages, setIncludeImages] = useState(true)
 
+  const [promptsLoading, setPromptsLoading] = useState(false)
+  const [promptsResult, setPromptsResult] = useState<BuildPromptsResult | null>(null)
+  const [promptsError, setPromptsError] = useState<string | null>(null)
+
   const textProviders = listTextProviders()
   const imageProviders = listImageProviders()
   const selectedStoryType = storyTypes.find(t => t.id === storyTypeId) ?? null
@@ -252,11 +426,46 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
     : false
   const selectedProfiles = profiles.filter(p => selectedProfileIds.includes(p.id))
   const providerCtx = PROVIDER_CONTEXT[imageProvider as keyof typeof PROVIDER_CONTEXT] ?? null
+  const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading
 
   function toggleProfile(id: string) {
     setSelectedProfileIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     )
+  }
+
+  function reset() {
+    setPromptsResult(null)
+    setPromptsError(null)
+  }
+
+  async function buildPrompts() {
+    setPromptsLoading(true)
+    setPromptsError(null)
+    try {
+      const res = await fetch("/api/workbench/build-prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: selectedProfileIds,
+          storyTypeId,
+          storyLength,
+          textDensity,
+          storyDescription: storyDescription.trim() || undefined,
+          extraInput: extraInput.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPromptsError(data.error ?? "Failed to build prompts")
+      } else {
+        setPromptsResult(data as BuildPromptsResult)
+      }
+    } catch {
+      setPromptsError("Network error. Please try again.")
+    } finally {
+      setPromptsLoading(false)
+    }
   }
 
   return (
@@ -481,7 +690,16 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
 
         {/* 12. Action Buttons */}
         <div className="space-y-1.5 pt-4 border-t border-border">
-          <Button disabled className="w-full">Build Prompts</Button>
+          <Button
+            disabled={!canBuildPrompts}
+            onClick={buildPrompts}
+            className="w-full"
+          >
+            {promptsLoading ? "Building…" : "Build Prompts"}
+          </Button>
+          {promptsError && (
+            <p className="text-xs text-destructive px-1">{promptsError}</p>
+          )}
           <Button disabled className="w-full">Generate Story Text</Button>
           <Button disabled className="w-full">Extract Visual Context</Button>
           <Button disabled className="w-full">Build Reference Image</Button>
@@ -490,7 +708,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
             Save as Story
             <span className="ml-auto text-xs text-muted-foreground">(costs credits)</span>
           </Button>
-          <Button disabled variant="ghost" className="w-full">Reset</Button>
+          <Button variant="ghost" className="w-full" onClick={reset}>Reset</Button>
         </div>
       </div>
 
@@ -510,6 +728,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
               <ProfileCard key={profile.id} profile={profile} />
             ))}
 
+            {/* Stage 0 handoff */}
             <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
               <p className="font-semibold mb-2">→ Passing to prompt builder:</p>
               <p>
@@ -538,6 +757,30 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                   : "No"}
               </p>
             </div>
+
+            {/* Stage 1 handoff */}
+            {promptsResult && (
+              <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
+                <p className="font-semibold mb-2">→ Passing to text provider:</p>
+                <p>Provider: {textProviders.find(p => p.id === textProvider)?.label ?? textProvider}</p>
+                <p>System prompt: {promptsResult.tokenCounts.system.toLocaleString()} tokens</p>
+                <p>User prompt: {promptsResult.tokenCounts.user.toLocaleString()} tokens</p>
+                <p>
+                  {"Combined: "}
+                  {promptsResult.tokenCounts.combined.toLocaleString()} tokens ({promptsResult.tokenCounts.contextWindowPercent}% of context window)
+                </p>
+              </div>
+            )}
+
+            {/* Build prompts error */}
+            {promptsError && !promptsResult && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                {promptsError}
+              </div>
+            )}
+
+            {/* Stage 1 card */}
+            {promptsResult && <Stage1Card result={promptsResult} />}
           </div>
         )}
       </div>
