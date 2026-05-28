@@ -107,6 +107,29 @@ interface VisualResult {
   }
 }
 
+interface BuildReferenceResult {
+  profileRefs: { profileId: string; name: string; url: string | null; storageField: string }[]
+  compositingSteps: {
+    addedProfileName: string
+    prompt: string
+    model: string
+    resultUrl: string
+    durationMs: number
+    success: boolean
+    error: string | null
+  }[]
+  baseReferenceUrl: string | null
+  styleTransfer: {
+    inputUrl: string
+    artStylePrefix: string
+    model: string
+    resultUrl: string
+    durationMs: number
+    success: boolean
+  } | null
+  styledReferenceUrl: string | null
+}
+
 // ─── Provider context ─────────────────────────────────────────────────────────
 
 const PROVIDER_CONTEXT = {
@@ -177,6 +200,16 @@ function getStorageField(profile: Profile): string {
   if (profile.character_illustration_path) return "character_illustration_path"
   if (profile.reference_image_path) return "reference_image_path"
   return "none"
+}
+
+function storageFieldBadge(field: string): { label: string; className: string } {
+  switch (field) {
+    case "combined_reference_path": return { label: "combined", className: "bg-green-100 text-green-700" }
+    case "character_illustration_path": return { label: "illustration", className: "bg-blue-100 text-blue-700" }
+    case "reference_image_path": return { label: "reference", className: "bg-muted text-muted-foreground" }
+    case "reference_image_url": return { label: "URL", className: "bg-muted text-muted-foreground" }
+    default: return { label: "none", className: "bg-red-100 text-red-700" }
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -330,7 +363,6 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm">Stage 1 — Prompt Builder</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
@@ -338,7 +370,6 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
         </span>
       </div>
 
-      {/* Token summary */}
       <div className="px-4 py-3 border-b border-border bg-muted/20">
         <div className="flex items-center gap-3 flex-wrap text-xs">
           <span>System: <span className="font-mono font-medium">{tokenCounts.system.toLocaleString()}</span> tokens</span>
@@ -355,7 +386,6 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
         </div>
       </div>
 
-      {/* Story Type Contribution */}
       <div className="border-b border-border">
         <button
           type="button"
@@ -363,9 +393,7 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
           className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
         >
           <span>Story Type Contribution</span>
-          {showStoryType
-            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          {showStoryType ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>
         {showStoryType && (
           <div className="px-4 pb-4 space-y-3">
@@ -378,7 +406,6 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
         )}
       </div>
 
-      {/* System Prompt */}
       <div className="border-b border-border">
         <div className="flex items-center justify-between px-4 py-2.5">
           <button
@@ -386,9 +413,7 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
             onClick={() => setShowSystem(v => !v)}
             className="flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
           >
-            {showSystem
-              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            {showSystem ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             System Prompt
           </button>
           <button
@@ -409,7 +434,6 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
         )}
       </div>
 
-      {/* User Prompt */}
       <div>
         <div className="flex items-center justify-between px-4 py-2.5">
           <button
@@ -417,9 +441,7 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
             onClick={() => setShowUser(v => !v)}
             className="flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
           >
-            {showUser
-              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            {showUser ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             User Prompt
           </button>
           <button
@@ -458,7 +480,6 @@ function Stage2Card({
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm">Stage 2 — Story Text</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
@@ -473,7 +494,6 @@ function Stage2Card({
         </button>
       </div>
 
-      {/* Meta */}
       <div className="px-4 py-3 border-b border-border bg-muted/20">
         <div className="flex items-center gap-3 flex-wrap text-xs">
           <span>Model: <span className="font-mono font-medium">{result.model}</span></span>
@@ -484,7 +504,6 @@ function Stage2Card({
         </div>
       </div>
 
-      {/* Raw text collapsible */}
       <div className="border-b border-border">
         <button
           type="button"
@@ -492,9 +511,7 @@ function Stage2Card({
           className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
         >
           <span>Raw Text</span>
-          {showRaw
-            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          {showRaw ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>
         {showRaw && (
           <div className="px-4 pb-4">
@@ -505,7 +522,6 @@ function Stage2Card({
         )}
       </div>
 
-      {/* Editable pages */}
       <div className="px-4 py-4 space-y-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pages (editable)</p>
         {pages.map((page, i) => (
@@ -543,7 +559,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm">Stage 3 — Visual Context</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
@@ -558,7 +573,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
         </button>
       </div>
 
-      {/* Parse banner */}
       <div className={`px-4 py-2 border-b border-border text-xs flex items-center gap-2 ${
         meta.parseSuccess ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
       }`}>
@@ -569,7 +583,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
       </div>
 
       <div className="divide-y divide-border">
-        {/* Setting */}
         <div className="px-4 py-3 space-y-1">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Setting</p>
           <p className="text-sm">{visualContext.setting || "—"}</p>
@@ -581,7 +594,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
           )}
         </div>
 
-        {/* Outfits */}
         {Object.keys(visualContext.outfits).length > 0 && (
           <div className="px-4 py-3 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Outfits</p>
@@ -598,7 +610,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
           </div>
         )}
 
-        {/* Story Characters */}
         {visualContext.storyCharacters.length > 0 && (
           <div className="px-4 py-3 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -627,7 +638,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
           </div>
         )}
 
-        {/* Page Scenes */}
         <div className="px-4 py-3 space-y-4">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Scenes</p>
           {visualContext.pageScenes.map(scene => (
@@ -644,9 +654,7 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
                 )}
               </div>
               <p className="text-sm">{scene.action}</p>
-              {scene.setting && (
-                <p className="text-xs text-muted-foreground italic">{scene.setting}</p>
-              )}
+              {scene.setting && <p className="text-xs text-muted-foreground italic">{scene.setting}</p>}
               {scene.toys.length > 0 && (
                 <p className="text-xs text-muted-foreground">Toys: {scene.toys.join(", ")}</p>
               )}
@@ -654,7 +662,6 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
           ))}
         </div>
 
-        {/* Raw JSON collapsible */}
         <div>
           <button
             type="button"
@@ -662,9 +669,7 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
             className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
           >
             <span>Raw JSON</span>
-            {showRaw
-              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            {showRaw ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
           </button>
           {showRaw && (
             <div className="px-4 pb-4">
@@ -674,6 +679,231 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CompositingStepRow({ step }: { step: BuildReferenceResult["compositingSteps"][number] }) {
+  const [showPrompt, setShowPrompt] = useState(false)
+
+  return (
+    <div className="rounded-lg border bg-background p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium">Adding {step.addedProfileName}</span>
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+          step.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+        }`}>
+          {step.success ? "✓ success" : "✗ failed"}
+        </span>
+        <span className="text-xs text-muted-foreground ml-auto">{(step.durationMs / 1000).toFixed(1)}s</span>
+      </div>
+
+      {step.error && (
+        <p className="text-xs text-destructive">{step.error}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowPrompt(v => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {showPrompt ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        Compositing prompt
+      </button>
+      {showPrompt && (
+        <pre className="whitespace-pre-wrap break-words px-3 py-2 bg-muted/40 rounded-lg font-mono text-[11px] leading-relaxed text-foreground">
+          {step.prompt}
+        </pre>
+      )}
+
+      {step.success && step.resultUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={step.resultUrl}
+          alt={`After adding ${step.addedProfileName}`}
+          className="w-full rounded-lg object-cover max-h-48"
+        />
+      )}
+    </div>
+  )
+}
+
+function Stage4Card({
+  result,
+  onRerun,
+}: {
+  result: BuildReferenceResult
+  onRerun: () => void
+}) {
+  const finalUrl = result.styledReferenceUrl ?? result.baseReferenceUrl
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 4 — Reference Image Builder</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+          ✓ complete
+        </span>
+        <button
+          type="button"
+          onClick={onRerun}
+          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+        >
+          Re-run compositing
+        </button>
+      </div>
+
+      <div className="divide-y divide-border">
+        {/* 4a — Individual References */}
+        <div className="px-4 py-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4a — Individual References</p>
+          <div className="grid grid-cols-2 gap-3">
+            {result.profileRefs.map(ref => {
+              const badge = storageFieldBadge(ref.storageField)
+              return (
+                <div key={ref.profileId} className="rounded-lg border bg-background p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">{ref.name}</span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  {ref.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={ref.url}
+                      alt={`${ref.name} reference`}
+                      className="w-full rounded-lg object-cover max-h-32"
+                    />
+                  ) : (
+                    <div className="w-full rounded-lg bg-red-50 border border-red-200 flex items-center justify-center py-6 text-xs text-red-600">
+                      No reference image
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 4b — Compositing Steps */}
+        <div className="px-4 py-3 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4b — Compositing Steps</p>
+          {result.compositingSteps.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Single profile — no compositing required</p>
+          ) : (
+            result.compositingSteps.map((step, i) => (
+              <CompositingStepRow key={i} step={step} />
+            ))
+          )}
+        </div>
+
+        {/* 4c — Style Transfer */}
+        <div className="px-4 py-3 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4c — Style Transfer</p>
+          {result.styleTransfer ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground font-mono">{result.styleTransfer.artStylePrefix}</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${
+                  result.styleTransfer.success ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {result.styleTransfer.success ? "✓ applied" : "⚠ unchanged"}
+                </span>
+                <span>{(result.styleTransfer.durationMs / 1000).toFixed(1)}s</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] text-muted-foreground">Before</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={result.styleTransfer.inputUrl} alt="Before style transfer" className="w-full rounded-lg object-cover" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] text-muted-foreground">After</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={result.styleTransfer.resultUrl} alt="After style transfer" className="w-full rounded-lg object-cover" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No art style selected — skipped</p>
+          )}
+        </div>
+
+        {/* Final reference image */}
+        {finalUrl && (
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Final reference image — used for all pages
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={finalUrl} alt="Final reference image" className="w-full rounded-lg object-cover" />
+          </div>
+        )}
+
+        {/* Re-run style transfer (not yet implemented) */}
+        <div className="px-4 py-3">
+          <Button disabled variant="outline" size="sm" className="text-xs">
+            Re-run style transfer only
+            <span className="ml-2 text-muted-foreground">coming soon</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Stage5Card({
+  prompts,
+  scenes,
+  onPromptsChange,
+}: {
+  prompts: string[]
+  scenes: StoryVisualContext["pageScenes"]
+  onPromptsChange: (prompts: string[]) => void
+}) {
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 5 — Image Prompt Builder</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+          ✓ complete
+        </span>
+        <span className="ml-auto text-xs text-muted-foreground">{prompts.length} prompts</span>
+      </div>
+
+      <div className="divide-y divide-border">
+        {prompts.map((prompt, i) => {
+          const scene = scenes[i]
+          const tokens = Math.ceil(prompt.length / 4)
+          return (
+            <div key={i} className="px-4 py-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">Page {i + 1}</span>
+                <span className="text-xs text-muted-foreground font-mono">{tokens.toLocaleString()} tokens</span>
+                {scene?.characters && scene.characters.length > 0 && (
+                  <span className="text-xs text-muted-foreground ml-auto">{scene.characters.join(", ")}</span>
+                )}
+              </div>
+
+              {scene?.text && (
+                <p className="text-xs text-muted-foreground italic line-clamp-2">{scene.text}</p>
+              )}
+
+              <textarea
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                rows={4}
+                value={prompt}
+                onChange={e => {
+                  const updated = [...prompts]
+                  updated[i] = e.target.value
+                  onPromptsChange(updated)
+                }}
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -710,6 +940,14 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [visualResult, setVisualResult] = useState<VisualResult | null>(null)
   const [visualError, setVisualError] = useState<string | null>(null)
 
+  // Stage 4
+  const [referenceLoading, setReferenceLoading] = useState(false)
+  const [referenceResult, setReferenceResult] = useState<BuildReferenceResult | null>(null)
+  const [referenceError, setReferenceError] = useState<string | null>(null)
+
+  // Stage 5
+  const [imagePrompts, setImagePrompts] = useState<string[] | null>(null)
+
   const textProviders = listTextProviders()
   const imageProviders = listImageProviders()
   const selectedStoryType = storyTypes.find(t => t.id === storyTypeId) ?? null
@@ -721,6 +959,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading
   const canGenerateText = !!promptsResult && !textLoading && !promptsLoading
   const canExtractVisual = storyPages.length > 0 && !visualLoading && !textLoading
+  const canBuildReference = selectedProfileIds.length > 0 && !referenceLoading
 
   function toggleProfile(id: string) {
     setSelectedProfileIds(prev =>
@@ -739,6 +978,30 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
     setVisualLoading(false)
     setVisualResult(null)
     setVisualError(null)
+    setReferenceLoading(false)
+    setReferenceResult(null)
+    setReferenceError(null)
+    setImagePrompts(null)
+  }
+
+  async function triggerBuildImagePrompts(vc: StoryVisualContext, rr: BuildReferenceResult) {
+    setImagePrompts(null)
+    try {
+      const res = await fetch("/api/workbench/build-image-prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          visualContext: vc,
+          artStyleId,
+          profileIds: selectedProfileIds,
+          referenceAvailable: !!(rr.styledReferenceUrl ?? rr.baseReferenceUrl),
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) setImagePrompts((data as { prompts: string[] }).prompts)
+    } catch {
+      // silent — Stage 5 auto-build; user can change settings and re-run Stage 4 or 3 to retry
+    }
   }
 
   async function buildPrompts() {
@@ -858,12 +1121,46 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       if (!res.ok) {
         setVisualError((data as { error?: string }).error ?? "Failed to extract visual context")
       } else {
-        setVisualResult(data as VisualResult)
+        const vr = data as VisualResult
+        setVisualResult(vr)
+        if (referenceResult) {
+          await triggerBuildImagePrompts(vr.visualContext, referenceResult)
+        }
       }
     } catch {
       setVisualError("Network error. Please try again.")
     } finally {
       setVisualLoading(false)
+    }
+  }
+
+  async function buildReference() {
+    if (!selectedProfileIds.length) return
+    setReferenceLoading(true)
+    setReferenceError(null)
+    setReferenceResult(null)
+    setImagePrompts(null)
+
+    try {
+      const res = await fetch("/api/workbench/build-reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: selectedProfileIds, artStyleId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setReferenceError((data as { error?: string }).error ?? "Failed to build reference image")
+      } else {
+        const rr = data as BuildReferenceResult
+        setReferenceResult(rr)
+        if (visualResult) {
+          await triggerBuildImagePrompts(visualResult.visualContext, rr)
+        }
+      }
+    } catch {
+      setReferenceError("Network error. Please try again.")
+    } finally {
+      setReferenceLoading(false)
     }
   }
 
@@ -1113,7 +1410,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
           >
             {visualLoading ? "Extracting…" : "Extract Visual Context"}
           </Button>
-          <Button disabled className="w-full">Build Reference Image</Button>
+          <Button
+            disabled={!canBuildReference}
+            onClick={buildReference}
+            className="w-full"
+          >
+            {referenceLoading ? "Building…" : "Build Reference Image"}
+          </Button>
           <Button disabled className="w-full">Generate Images</Button>
           <Button disabled variant="outline" className="w-full">
             Save as Story
@@ -1256,6 +1559,57 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
             {/* Stage 3 card */}
             {visualResult && !visualLoading && (
               <Stage3Card result={visualResult} onRerun={extractVisualCtx} />
+            )}
+
+            {/* Reference loading */}
+            {referenceLoading && (
+              <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+                Building reference image…
+              </div>
+            )}
+
+            {/* Reference error */}
+            {referenceError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                {referenceError}
+              </div>
+            )}
+
+            {/* Stage 4 card */}
+            {referenceResult && !referenceLoading && (
+              <>
+                <Stage4Card result={referenceResult} onRerun={buildReference} />
+
+                {/* Stage 4 handoff */}
+                <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
+                  <p className="font-semibold mb-2">→ Passing to image generator:</p>
+                  <p>
+                    {"Reference image: "}
+                    {(referenceResult.styledReferenceUrl ?? referenceResult.baseReferenceUrl)
+                      ? "✓ set"
+                      : "✗ missing"}
+                  </p>
+                  {referenceResult.profileRefs.filter(r => r.url).map(r => (
+                    <p key={r.profileId}>{r.name} ✓</p>
+                  ))}
+                  <p>Provider: {imageProviders.find(p => p.id === imageProvider)?.label ?? imageProvider}</p>
+                  <p>
+                    {"Provider supports reference images: "}
+                    {providerCtx?.supportsReference
+                      ? "✓ Yes"
+                      : "✗ No — images will use text descriptions only"}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Stage 5 card */}
+            {imagePrompts && visualResult && (
+              <Stage5Card
+                prompts={imagePrompts}
+                scenes={visualResult.visualContext.pageScenes}
+                onPromptsChange={setImagePrompts}
+              />
             )}
           </div>
         )}
