@@ -6,7 +6,7 @@ import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 import { applyArtStyleToReference, generateGroupReferenceImage } from "@/lib/ai/image"
 import { getImageProvider } from "@/lib/ai/providers/image/registry"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
-import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim, formatAge } from "@/lib/ai/prompt-builder"
+import { joinNames, buildCharacterAnchor, formatAge } from "@/lib/ai/prompt-builder"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
@@ -299,9 +299,6 @@ Each page must describe one clear visual moment — where the characters are, wh
               : profile.reference_image_url,
           }))
 
-          const referenceProfileIds = new Set(
-            profilesForReference.filter((profile) => Boolean(profile.reference_image_url)).map((profile) => profile.id)
-          )
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
           const styleDescription = artStyle?.prompt_prefix
@@ -316,6 +313,16 @@ Each page must describe one clear visual moment — where the characters are, wh
           const visualContext = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
 
           characterAnchor = buildCharacterAnchor(profilesForReference, {})
+
+          const characterDetails: Record<string, { gender: string; age: number; toyName?: string; toyDescription?: string }> = {}
+          for (const p of profiles) {
+            characterDetails[p.name] = {
+              gender: p.gender ?? "child",
+              age: p.age,
+              ...(p.toy?.name ? { toyName: p.toy.name } : {}),
+              ...(p.toy?.description ? { toyDescription: p.toy.description } : {}),
+            }
+          }
 
           send({ type: "status", message: "Applying art style…" })
           const baseReferenceUrl = await generateGroupReferenceImage(profilesForReference, visualContext.outfits)
@@ -332,15 +339,13 @@ Each page must describe one clear visual moment — where the characters are, wh
             const pageScene = visualContext.pageScenes[i]
               ?? visualContext.pageScenes[visualContext.pageScenes.length - 1]
               ?? { pageIndex: i, text: "", action: "", characters: [], toys: [], setting: "", mood: "warm" }
-            const anchor = referenceImageUrl
-              ? buildCharacterAnchorSlim(profilesForReference, {}, referenceProfileIds)
-              : characterAnchor
             return buildStoryPagePrompt({
               scene: pageScene,
               visualContext,
               artStylePrefix: styleDescription,
               referenceAvailable: !!referenceImageUrl,
-              characterDescriptions: anchor,
+              characterDetails,
+              storyCharacters: visualContext.storyCharacters,
             })
           })
 

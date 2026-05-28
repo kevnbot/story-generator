@@ -11,9 +11,21 @@ export function buildStoryPagePrompt(input: {
   visualContext: StoryVisualContext
   artStylePrefix: string
   referenceAvailable: boolean
-  characterDescriptions: string
+  characterDetails: {
+    [name: string]: {
+      gender: string
+      age: number
+      toyName?: string
+      toyDescription?: string
+    }
+  }
+  storyCharacters: {
+    name: string
+    description: string
+    appearsOnPages: number[]
+  }[]
 }): string {
-  const { scene, visualContext, artStylePrefix, referenceAvailable, characterDescriptions } = input
+  const { scene, visualContext, artStylePrefix, referenceAvailable, characterDetails, storyCharacters } = input
 
   const parts: string[] = []
 
@@ -24,35 +36,50 @@ export function buildStoryPagePrompt(input: {
   if (visualContext.timeOfDay) contextParts.push(visualContext.timeOfDay)
   if (contextParts.length > 0) parts.push(`Setting: ${contextParts.join(", ")}`)
 
+  for (const name of scene.characters) {
+    const detail = characterDetails[name]
+    if (!detail) continue
+
+    const humanGender = detail.gender === "girl" ? "human girl"
+      : detail.gender === "boy" ? "human boy"
+      : "human child"
+
+    let line = `${name} — ${humanGender}, age ${detail.age}`
+
+    if (!referenceAvailable) {
+      const outfit = visualContext.outfits[name]
+      if (outfit) line += `, ${outfit}`
+    }
+
+    line += "."
+
+    if (detail.toyName) {
+      const pronoun = detail.gender === "girl" ? "Her" : detail.gender === "boy" ? "His" : "Their"
+      const toyDesc = detail.toyDescription ? ` (${detail.toyDescription})` : ""
+      line += ` ${pronoun} toy: ${detail.toyName}${toyDesc}.`
+    }
+
+    parts.push(line)
+  }
+
+  const storyCharsOnPage = storyCharacters.filter(sc => sc.appearsOnPages.includes(scene.pageIndex))
+  for (const sc of storyCharsOnPage) {
+    parts.push(`${sc.name} — ${sc.description}.`)
+  }
+
+  if (scene.characters.length + storyCharsOnPage.length >= 3) {
+    parts.push("All characters listed above must be fully visible in the scene — do not omit any.")
+  }
+
   if (scene.action) parts.push(scene.action)
-
-  if (referenceAvailable) {
-    if (scene.characters.length > 0) {
-      parts.push(`Characters present: ${scene.characters.join(", ")}. Match their exact appearances from the reference image.`)
-    }
-  } else if (characterDescriptions) {
-    parts.push(`Characters: ${characterDescriptions}.`)
-    const outfitLines = scene.characters
-      .flatMap(name => {
-        const outfit = visualContext.outfits[name]
-        return outfit ? [`${name}: ${outfit}`] : []
-      })
-    if (outfitLines.length > 0) {
-      parts.push(`Outfits: ${outfitLines.join("; ")}.`)
-    }
-  }
-
-  if (scene.toys.length > 0) {
-    parts.push(`Toys present: ${scene.toys.join(", ")}.`)
-  }
 
   if (scene.mood) parts.push(`Mood: ${scene.mood}.`)
 
   if (referenceAvailable) {
-    parts.push("Maintain exact character appearances from the reference image.")
+    parts.push("Profile character appearances are defined by the reference image — do not alter them.")
   }
 
-  parts.push(HUMAN_RULE)
+  parts.push("All characters are human. Any toy is a separate physical object — never part of a character's body.")
 
   return parts.join(" ")
 }

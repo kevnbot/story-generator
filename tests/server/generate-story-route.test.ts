@@ -141,6 +141,7 @@ vi.mock("@/lib/ai/prompt-builder/visual-context", () => ({
     timeOfDay: "evening",
     recurringElements: [],
     outfits: {},
+    storyCharacters: [],
     pageScenes: [],
   })),
 }))

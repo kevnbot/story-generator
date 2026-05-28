@@ -15,6 +15,11 @@ export interface StoryVisualContext {
   timeOfDay: string             // morning / afternoon / evening / night
   recurringElements: string[]   // objects or places appearing across multiple pages
   outfits: Record<string, string> // character name → consistent outfit worn throughout the story
+  storyCharacters: {
+    name: string
+    description: string      // physical appearance from story text
+    appearsOnPages: number[] // zero-based page indices
+  }[]
   pageScenes: StoryPageScene[]
 }
 
@@ -47,6 +52,8 @@ PAGES: For each page, describe exactly what is visually happening as if directin
 
 STORY CONTEXT: Identify the primary setting, the time of day (morning, afternoon, evening, or night), and any objects or places that recur across multiple pages.
 
+STORY CHARACTERS: Identify any named characters who appear in the story but are NOT in the CHARACTERS list above. For each, describe their physical appearance based only on what the story text says or strongly implies — do not invent details. If the story gives no appearance description, provide a brief generic description appropriate to the story's context (e.g. "kindly older woman"). Note which zero-based page indices they appear on.
+
 Return ONLY valid JSON matching this exact shape — no markdown, no preamble:
 {
   "setting": "primary story location",
@@ -54,6 +61,13 @@ Return ONLY valid JSON matching this exact shape — no markdown, no preamble:
   "recurringElements": ["element1", "element2"],
   "outfits": [
     { "name": "character name", "outfit": "specific outfit description" }
+  ],
+  "storyCharacters": [
+    {
+      "name": "character name",
+      "description": "physical appearance from story text",
+      "appearsOnPages": [0, 2]
+    }
   ],
   "pageScenes": [
     {
@@ -83,6 +97,7 @@ export async function extractVisualContext(
     timeOfDay: "evening",
     recurringElements: [],
     outfits: {},
+    storyCharacters: [],
     pageScenes: storyPages.map((text, i) => ({
       pageIndex: i,
       text,
@@ -117,6 +132,7 @@ export async function extractVisualContext(
       timeOfDay?: string
       recurringElements?: string[]
       outfits?: Array<{ name?: string; outfit?: string }>
+      storyCharacters?: Array<{ name?: string; description?: string; appearsOnPages?: number[] }>
       pageScenes?: Array<{
         pageIndex?: number
         text?: string
@@ -149,11 +165,20 @@ export async function extractVisualContext(
       pageScenes.push(fallback.pageScenes[i])
     }
 
+    const storyCharacters = (parsed.storyCharacters ?? [])
+      .filter(sc => sc.name && sc.description)
+      .map(sc => ({
+        name: sc.name!,
+        description: sc.description!,
+        appearsOnPages: sc.appearsOnPages ?? [],
+      }))
+
     return {
       setting: parsed.setting ?? "",
       timeOfDay: parsed.timeOfDay ?? "evening",
       recurringElements: parsed.recurringElements ?? [],
       outfits,
+      storyCharacters,
       pageScenes,
     }
   } catch {
