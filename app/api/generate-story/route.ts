@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
 import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
-import { applyArtStyleToReference } from "@/lib/ai/image"
+import { applyArtStyleToReference, generateGroupReferenceImage } from "@/lib/ai/image"
 import { getImageProvider } from "@/lib/ai/providers/image/registry"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
 import { joinNames, buildCharacterAnchor, buildCharacterAnchorSlim, formatAge } from "@/lib/ai/prompt-builder"
@@ -267,9 +267,6 @@ Each page must describe one clear visual moment — where the characters are, wh
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"))
 
       try {
-        // TEMP: remove before shipping
-        console.log("=== SYSTEM PROMPT ===\n", systemPrompt)
-        console.log("=== USER PROMPT ===\n", userPrompt)
         for await (const chunk of generateStoryStream(systemPrompt, userPrompt)) {
           fullText += chunk
           send({ type: "chunk", text: chunk })
@@ -321,7 +318,7 @@ Each page must describe one clear visual moment — where the characters are, wh
           characterAnchor = buildCharacterAnchor(profilesForReference, {})
 
           send({ type: "status", message: "Applying art style…" })
-          const baseReferenceUrl = profilesForReference.find((p) => p.reference_image_url)?.reference_image_url ?? null
+          const baseReferenceUrl = await generateGroupReferenceImage(profilesForReference, visualContext.outfits)
           const referenceImageUrl = (baseReferenceUrl && artStyle?.prompt_prefix)
             ? await applyArtStyleToReference(baseReferenceUrl, styleDescription)
             : baseReferenceUrl
