@@ -8,6 +8,7 @@ import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib
 import { listImageProviders } from "@/lib/ai/providers/image/registry"
 import { listTextProviders } from "@/lib/ai/providers/text/registry"
 import { formatAge } from "@/lib/ai/prompt-builder"
+import type { StoryVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -89,6 +90,23 @@ interface BuildPromptsResult {
   }
 }
 
+interface TextResult {
+  fullText: string
+  durationMs: number
+  model: string
+}
+
+interface VisualResult {
+  visualContext: StoryVisualContext
+  meta: {
+    parseSuccess: boolean
+    durationMs: number
+    model: string
+    pageCount: number
+    storyCharactersFound: number
+  }
+}
+
 // ─── Provider context ─────────────────────────────────────────────────────────
 
 const PROVIDER_CONTEXT = {
@@ -120,6 +138,31 @@ const PROVIDER_CONTEXT = {
     expectedTime: "10–15s per image",
   },
 } as const
+
+// ─── Local page splitter (mirrors lib/ai/story.ts — safe to copy here) ───────
+
+const PAGE_BREAK_RE = /^[-–—*\s]*(?:\*{0,2})\s*Page\s+\d+\s*(?:\*{0,2})[-–—*\s]*$/im
+
+function splitPages(content: string): string[] {
+  const lines = content.split("\n")
+  const sections: string[] = []
+  let current: string[] = []
+
+  for (const line of lines) {
+    if (PAGE_BREAK_RE.test(line)) {
+      const section = current.join("\n").trim()
+      if (section) sections.push(section)
+      current = []
+    } else {
+      current.push(line)
+    }
+  }
+  const last = current.join("\n").trim()
+  if (last) sections.push(last)
+
+  if (sections.length > 1) return sections
+  return content.split(/\n\n+/).map((p) => p.trim()).filter(Boolean)
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -400,6 +443,242 @@ function Stage1Card({ result }: { result: BuildPromptsResult }) {
   )
 }
 
+function Stage2Card({
+  result,
+  pages,
+  onPagesChange,
+  onRegenerate,
+}: {
+  result: TextResult
+  pages: string[]
+  onPagesChange: (pages: string[]) => void
+  onRegenerate: () => void
+}) {
+  const [showRaw, setShowRaw] = useState(false)
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 2 — Story Text</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+          ✓ complete
+        </span>
+        <button
+          type="button"
+          onClick={onRegenerate}
+          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+        >
+          Re-generate
+        </button>
+      </div>
+
+      {/* Meta */}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <div className="flex items-center gap-3 flex-wrap text-xs">
+          <span>Model: <span className="font-mono font-medium">{result.model}</span></span>
+          <span className="text-muted-foreground">·</span>
+          <span>Duration: <span className="font-mono font-medium">{(result.durationMs / 1000).toFixed(1)}s</span></span>
+          <span className="text-muted-foreground">·</span>
+          <span>Pages split: <span className="font-mono font-medium">{pages.length}</span></span>
+        </div>
+      </div>
+
+      {/* Raw text collapsible */}
+      <div className="border-b border-border">
+        <button
+          type="button"
+          onClick={() => setShowRaw(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+        >
+          <span>Raw Text</span>
+          {showRaw
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        {showRaw && (
+          <div className="px-4 pb-4">
+            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-3 bg-muted/40 rounded-lg font-mono text-[12px] leading-relaxed text-foreground">
+              {result.fullText}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* Editable pages */}
+      <div className="px-4 py-4 space-y-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pages (editable)</p>
+        {pages.map((page, i) => (
+          <div key={i} className="space-y-1">
+            <p className="text-xs text-muted-foreground">Page {i + 1}</p>
+            <textarea
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+              rows={4}
+              value={page}
+              onChange={e => {
+                const updated = [...pages]
+                updated[i] = e.target.value
+                onPagesChange(updated)
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const MOOD_COLORS: Record<string, string> = {
+  warm: "bg-orange-100 text-orange-700",
+  joyful: "bg-yellow-100 text-yellow-700",
+  mysterious: "bg-purple-100 text-purple-700",
+  calm: "bg-blue-100 text-blue-700",
+  exciting: "bg-red-100 text-red-700",
+  silly: "bg-green-100 text-green-700",
+}
+
+function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => void }) {
+  const [showRaw, setShowRaw] = useState(false)
+  const { visualContext, meta } = result
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 3 — Visual Context</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+          ✓ complete
+        </span>
+        <button
+          type="button"
+          onClick={onRerun}
+          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+        >
+          Re-run extraction
+        </button>
+      </div>
+
+      {/* Parse banner */}
+      <div className={`px-4 py-2 border-b border-border text-xs flex items-center gap-2 ${
+        meta.parseSuccess ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
+      }`}>
+        <span>{meta.parseSuccess ? "✓ JSON parsed successfully" : "⚠ Parse failed — using fallback"}</span>
+        <span className="ml-auto text-muted-foreground">
+          {meta.model} · {(meta.durationMs / 1000).toFixed(1)}s
+        </span>
+      </div>
+
+      <div className="divide-y divide-border">
+        {/* Setting */}
+        <div className="px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Setting</p>
+          <p className="text-sm">{visualContext.setting || "—"}</p>
+          <p className="text-xs text-muted-foreground">Time of day: {visualContext.timeOfDay}</p>
+          {visualContext.recurringElements.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Recurring elements: {visualContext.recurringElements.join(", ")}
+            </p>
+          )}
+        </div>
+
+        {/* Outfits */}
+        {Object.keys(visualContext.outfits).length > 0 && (
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Outfits</p>
+            <table className="w-full text-xs">
+              <tbody>
+                {Object.entries(visualContext.outfits).map(([name, outfit]) => (
+                  <tr key={name} className="border-t border-border first:border-t-0">
+                    <td className="py-1 pr-3 font-medium w-24 align-top">{name}</td>
+                    <td className="py-1 text-muted-foreground">{outfit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Story Characters */}
+        {visualContext.storyCharacters.length > 0 && (
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Story Characters ({visualContext.storyCharacters.length})
+            </p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="text-left py-1 pr-3 font-medium text-muted-foreground w-24">Name</th>
+                  <th className="text-left py-1 pr-3 font-medium text-muted-foreground">Description</th>
+                  <th className="text-left py-1 font-medium text-muted-foreground w-16">Pages</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visualContext.storyCharacters.map(sc => (
+                  <tr key={sc.name} className="border-t border-border">
+                    <td className="py-1 pr-3 font-medium align-top">{sc.name}</td>
+                    <td className="py-1 pr-3 text-muted-foreground align-top">{sc.description}</td>
+                    <td className="py-1 text-muted-foreground align-top">
+                      {sc.appearsOnPages.map(i => i + 1).join(", ")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Page Scenes */}
+        <div className="px-4 py-3 space-y-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Scenes</p>
+          {visualContext.pageScenes.map(scene => (
+            <div key={scene.pageIndex} className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-medium">Page {scene.pageIndex + 1}</span>
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  MOOD_COLORS[scene.mood] ?? "bg-muted text-muted-foreground"
+                }`}>
+                  {scene.mood}
+                </span>
+                {scene.characters.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{scene.characters.join(", ")}</span>
+                )}
+              </div>
+              <p className="text-sm">{scene.action}</p>
+              {scene.setting && (
+                <p className="text-xs text-muted-foreground italic">{scene.setting}</p>
+              )}
+              {scene.toys.length > 0 && (
+                <p className="text-xs text-muted-foreground">Toys: {scene.toys.join(", ")}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Raw JSON collapsible */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowRaw(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+          >
+            <span>Raw JSON</span>
+            {showRaw
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {showRaw && (
+            <div className="px-4 pb-4">
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-3 bg-muted/40 rounded-lg font-mono text-[12px] leading-relaxed text-foreground">
+                {JSON.stringify(visualContext, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGenerationTabProps) {
@@ -414,9 +693,22 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [imageProvider, setImageProvider] = useState("fal")
   const [includeImages, setIncludeImages] = useState(true)
 
+  // Stage 1
   const [promptsLoading, setPromptsLoading] = useState(false)
   const [promptsResult, setPromptsResult] = useState<BuildPromptsResult | null>(null)
   const [promptsError, setPromptsError] = useState<string | null>(null)
+
+  // Stage 2
+  const [textLoading, setTextLoading] = useState(false)
+  const [streamingText, setStreamingText] = useState("")
+  const [textResult, setTextResult] = useState<TextResult | null>(null)
+  const [textError, setTextError] = useState<string | null>(null)
+  const [storyPages, setStoryPages] = useState<string[]>([])
+
+  // Stage 3
+  const [visualLoading, setVisualLoading] = useState(false)
+  const [visualResult, setVisualResult] = useState<VisualResult | null>(null)
+  const [visualError, setVisualError] = useState<string | null>(null)
 
   const textProviders = listTextProviders()
   const imageProviders = listImageProviders()
@@ -427,6 +719,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const selectedProfiles = profiles.filter(p => selectedProfileIds.includes(p.id))
   const providerCtx = PROVIDER_CONTEXT[imageProvider as keyof typeof PROVIDER_CONTEXT] ?? null
   const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading
+  const canGenerateText = !!promptsResult && !textLoading && !promptsLoading
+  const canExtractVisual = storyPages.length > 0 && !visualLoading && !textLoading
 
   function toggleProfile(id: string) {
     setSelectedProfileIds(prev =>
@@ -437,6 +731,14 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   function reset() {
     setPromptsResult(null)
     setPromptsError(null)
+    setTextLoading(false)
+    setStreamingText("")
+    setTextResult(null)
+    setTextError(null)
+    setStoryPages([])
+    setVisualLoading(false)
+    setVisualResult(null)
+    setVisualError(null)
   }
 
   async function buildPrompts() {
@@ -465,6 +767,103 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       setPromptsError("Network error. Please try again.")
     } finally {
       setPromptsLoading(false)
+    }
+  }
+
+  async function generateText() {
+    if (!promptsResult) return
+    setTextLoading(true)
+    setStreamingText("")
+    setTextError(null)
+    setTextResult(null)
+    setStoryPages([])
+
+    try {
+      const res = await fetch("/api/workbench/generate-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemPrompt: promptsResult.systemPrompt,
+          userPrompt: promptsResult.userPrompt,
+        }),
+      })
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}))
+        setTextError((data as { error?: string }).error ?? "Failed to generate story")
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let fullText = ""
+      let doneData: { durationMs: number; model: string } | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line) as { type: string; text?: string; durationMs?: number; model?: string; message?: string }
+            if (msg.type === "chunk" && msg.text) {
+              fullText += msg.text
+              setStreamingText(fullText)
+            } else if (msg.type === "done" && msg.durationMs !== undefined && msg.model) {
+              doneData = { durationMs: msg.durationMs, model: msg.model }
+            } else if (msg.type === "error") {
+              setTextError(msg.message ?? "Generation failed")
+            }
+          } catch {
+            // ignore malformed lines
+          }
+        }
+      }
+
+      if (fullText && doneData) {
+        const pages = splitPages(fullText)
+        setTextResult({ fullText, ...doneData })
+        setStoryPages(pages)
+        setStreamingText("")
+      }
+    } catch {
+      setTextError("Network error. Please try again.")
+    } finally {
+      setTextLoading(false)
+    }
+  }
+
+  async function extractVisualCtx() {
+    if (!storyPages.length) return
+    setVisualLoading(true)
+    setVisualError(null)
+    setVisualResult(null)
+
+    const characterNames = selectedProfiles.map(p => p.name)
+    const toyNames = selectedProfiles.map(p => p.toy?.name).filter((n): n is string => !!n)
+    const artStyle = artStyles.find(s => s.id === artStyleId)
+    const artStyleDescription = artStyle?.name ?? "classic children's picture book"
+
+    try {
+      const res = await fetch("/api/workbench/extract-visual-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storyPages, characterNames, toyNames, artStyleDescription }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setVisualError((data as { error?: string }).error ?? "Failed to extract visual context")
+      } else {
+        setVisualResult(data as VisualResult)
+      }
+    } catch {
+      setVisualError("Network error. Please try again.")
+    } finally {
+      setVisualLoading(false)
     }
   }
 
@@ -700,8 +1099,20 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
           {promptsError && (
             <p className="text-xs text-destructive px-1">{promptsError}</p>
           )}
-          <Button disabled className="w-full">Generate Story Text</Button>
-          <Button disabled className="w-full">Extract Visual Context</Button>
+          <Button
+            disabled={!canGenerateText}
+            onClick={generateText}
+            className="w-full"
+          >
+            {textLoading ? "Generating…" : "Generate Story Text"}
+          </Button>
+          <Button
+            disabled={!canExtractVisual}
+            onClick={extractVisualCtx}
+            className="w-full"
+          >
+            {visualLoading ? "Extracting…" : "Extract Visual Context"}
+          </Button>
           <Button disabled className="w-full">Build Reference Image</Button>
           <Button disabled className="w-full">Generate Images</Button>
           <Button disabled variant="outline" className="w-full">
@@ -781,6 +1192,71 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
 
             {/* Stage 1 card */}
             {promptsResult && <Stage1Card result={promptsResult} />}
+
+            {/* Stage 2 streaming */}
+            {textLoading && streamingText && (
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+                  <span className="font-semibold text-sm">Stage 2 — Story Text</span>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">
+                    ● streaming
+                  </span>
+                </div>
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground bg-muted/20 px-4 py-3">
+                  {streamingText}
+                </pre>
+              </div>
+            )}
+
+            {/* Text error */}
+            {textError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                {textError}
+              </div>
+            )}
+
+            {/* Stage 2 card */}
+            {textResult && !textLoading && (
+              <>
+                <Stage2Card
+                  result={textResult}
+                  pages={storyPages}
+                  onPagesChange={setStoryPages}
+                  onRegenerate={generateText}
+                />
+
+                {/* Stage 2 handoff */}
+                <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
+                  <p className="font-semibold mb-2">→ Passing to visual context extractor:</p>
+                  <p>Pages: {storyPages.length}</p>
+                  <p>Characters: {selectedProfiles.map(p => p.name).join(", ")}</p>
+                  <p>
+                    {"Toys: "}
+                    {selectedProfiles.map(p => p.toy?.name).filter(Boolean).join(", ") || "none"}
+                  </p>
+                  <p>Art style: {artStyles.find(s => s.id === artStyleId)?.name ?? "not selected"}</p>
+                </div>
+              </>
+            )}
+
+            {/* Visual loading */}
+            {visualLoading && (
+              <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+                Extracting visual context…
+              </div>
+            )}
+
+            {/* Visual error */}
+            {visualError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                {visualError}
+              </div>
+            )}
+
+            {/* Stage 3 card */}
+            {visualResult && !visualLoading && (
+              <Stage3Card result={visualResult} onRerun={extractVisualCtx} />
+            )}
           </div>
         )}
       </div>

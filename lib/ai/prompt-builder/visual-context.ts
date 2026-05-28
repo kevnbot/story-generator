@@ -88,7 +88,7 @@ export async function extractVisualContext(
   characterNames: string[],
   toyNames: string[],
   artStyleDescription: string
-): Promise<StoryVisualContext> {
+): Promise<{ result: StoryVisualContext; parseSuccess: boolean }> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const prompt = buildVisualContextPrompt(storyPages, characterNames, toyNames, artStyleDescription)
 
@@ -117,15 +117,15 @@ export async function extractVisualContext(
       messages: [{ role: "user", content: prompt }],
     })
   } catch {
-    return fallback
+    return { result: fallback, parseSuccess: false }
   }
 
   const block = message.content[0]
-  if (block.type !== "text") return fallback
+  if (block.type !== "text") return { result: fallback, parseSuccess: false }
 
   try {
     const match = block.text.match(/\{[\s\S]*\}/)
-    if (!match) return fallback
+    if (!match) return { result: fallback, parseSuccess: false }
 
     const parsed = JSON.parse(match[0]) as {
       setting?: string
@@ -174,14 +174,17 @@ export async function extractVisualContext(
       }))
 
     return {
-      setting: parsed.setting ?? "",
-      timeOfDay: parsed.timeOfDay ?? "evening",
-      recurringElements: parsed.recurringElements ?? [],
-      outfits,
-      storyCharacters,
-      pageScenes,
+      result: {
+        setting: parsed.setting ?? "",
+        timeOfDay: parsed.timeOfDay ?? "evening",
+        recurringElements: parsed.recurringElements ?? [],
+        outfits,
+        storyCharacters,
+        pageScenes,
+      },
+      parseSuccess: true,
     }
   } catch {
-    return fallback
+    return { result: fallback, parseSuccess: false }
   }
 }

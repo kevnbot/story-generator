@@ -310,7 +310,7 @@ Each page must describe one clear visual moment — where the characters are, wh
           const toyNames = profiles
             .map(p => p.toy?.name)
             .filter((name): name is string => Boolean(name) && name !== "their favorite toy")
-          const visualContext = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
+          const { result: visualContext } = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
 
           characterAnchor = buildCharacterAnchor(profilesForReference, {})
 
