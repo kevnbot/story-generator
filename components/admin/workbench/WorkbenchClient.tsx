@@ -61,7 +61,7 @@ export function WorkbenchClient({ profiles, storyTypes, artStyles }: WorkbenchCl
         ))}
       </div>
 
-      {activeTab === "story" && <StoryGenerationTab />}
+      {activeTab === "story" && <StoryGenerationTab profiles={profiles} storyTypes={storyTypes} artStyles={artStyles} />}
       {activeTab === "characters" && <CharacterReferencesTab />}
     </div>
   )
