@@ -202,11 +202,7 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId: id }),
       })
-      if (res.ok) {
-        const data = await res.json() as FullProfile
-        console.log("[profile-illustrations response]", data)
-        setFullProfile(data)
-      }
+      if (res.ok) setFullProfile(await res.json() as FullProfile)
     } catch {
       // ignore
     } finally {
