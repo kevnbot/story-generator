@@ -107,6 +107,31 @@ interface VisualResult {
   }
 }
 
+interface ImageAttemptLog {
+  attempt: number
+  resultUrl: string | null
+  isBlackImage: boolean
+  contentLengthBytes: number | null
+  rejectionReason: string | null
+  backoffMs: number | null
+}
+
+interface GeneratedImageResult {
+  pageIndex: number
+  url: string | null
+  isErrorPlaceholder: boolean
+  provider: string
+  model: string
+  referenceUsed: boolean
+  attempts: number
+  attemptsLog: ImageAttemptLog[]
+  isBlackImage: boolean
+  contentLengthBytes: number | null
+  rawResponseStatus: number | null
+  error: string | null
+  durationMs: number
+}
+
 interface BuildReferenceResult {
   profileRefs: { profileId: string; name: string; url: string | null; storageField: string }[]
   compositingSteps: {
@@ -909,6 +934,206 @@ function Stage5Card({
   )
 }
 
+function Stage6Card({
+  results,
+  pages,
+  totalImages,
+  isLoading,
+  progress,
+  onRerunPage,
+}: {
+  results: GeneratedImageResult[]
+  pages: string[]
+  totalImages: number
+  isLoading: boolean
+  progress: number
+  onRerunPage: (pageIndex: number) => void
+}) {
+  const [expandedMeta, setExpandedMeta] = useState<number | null>(null)
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 6 — Image Generation</span>
+        {isLoading ? (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">
+            ● generating {progress}/{totalImages}
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+            ✓ complete
+          </span>
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">{results.length} of {totalImages}</span>
+      </div>
+
+      <div className="divide-y divide-border">
+        {results.map(result => (
+          <div key={result.pageIndex} className="px-4 py-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium">Page {result.pageIndex + 1}</span>
+              {result.isErrorPlaceholder ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-medium">
+                  Error placeholder
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+                  ✓ Success
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onRerunPage(result.pageIndex)}
+                className="ml-auto text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
+              >
+                Re-run this page
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 items-start">
+              <div>
+                {pages[result.pageIndex] && (
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-6">
+                    {pages[result.pageIndex]}
+                  </p>
+                )}
+              </div>
+              <div>
+                {result.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={result.url}
+                    alt={`Page ${result.pageIndex + 1}`}
+                    className="w-full rounded-lg object-cover"
+                  />
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setExpandedMeta(expandedMeta === result.pageIndex ? null : result.pageIndex)}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {expandedMeta === result.pageIndex
+                ? <ChevronDown className="h-3 w-3" />
+                : <ChevronRight className="h-3 w-3" />}
+              Metadata
+            </button>
+
+            {expandedMeta === result.pageIndex && (
+              <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1">
+                <p>Provider: {result.provider}</p>
+                <p>Model: {result.model || "—"}</p>
+                <p>Reference used: {result.referenceUsed ? "✓" : "✗"}</p>
+                <p>Attempts: {result.attempts}</p>
+                <p>Black image detected: {result.isBlackImage ? "Yes" : "No"}</p>
+                <p>Duration: {(result.durationMs / 1000).toFixed(1)}s</p>
+                {result.error && <p className="text-destructive">Error: {result.error}</p>}
+                {result.attemptsLog.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <p className="font-medium">Attempts log:</p>
+                    {result.attemptsLog.map(log => (
+                      <div key={log.attempt} className="pl-2 border-l border-border space-y-0.5">
+                        <p>Attempt {log.attempt}: {log.resultUrl ? "✓ url" : "✗ null"}</p>
+                        {log.isBlackImage && <p className="text-yellow-700">black image detected</p>}
+                        {log.rejectionReason && <p>reason: {log.rejectionReason}</p>}
+                        {log.backoffMs !== null && <p>backoff: {log.backoffMs}ms</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Stage7Card({
+  storyTitle,
+  onTitleChange,
+  storyLength,
+  includeImages,
+  savedStoryId,
+  saveLoading,
+  saveError,
+  onSave,
+}: {
+  storyTitle: string
+  onTitleChange: (v: string) => void
+  storyLength: StoryLength
+  includeImages: boolean
+  savedStoryId: string | null
+  saveLoading: boolean
+  saveError: string | null
+  onSave: () => void
+}) {
+  const imageCost = includeImages ? STORY_LENGTHS[storyLength].imageCost : 0
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="font-semibold text-sm">Stage 7 — Save as Story</span>
+        {savedStoryId && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
+            ✓ saved
+          </span>
+        )}
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Story Title</p>
+          <input
+            type="text"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            value={storyTitle}
+            onChange={e => onTitleChange(e.target.value)}
+            placeholder="Enter story title…"
+          />
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1">
+          <p className="font-medium mb-1">Credit cost</p>
+          <p>Base text generation: 1 credit</p>
+          {includeImages && imageCost > 0 && (
+            <p>Images ({storyLength}): {imageCost} credits</p>
+          )}
+          <p className="font-semibold border-t border-border pt-1 mt-1">
+            Total: {1 + imageCost} credits
+          </p>
+        </div>
+
+        {savedStoryId ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-1">
+            <p className="text-sm text-green-700 font-medium">Story saved successfully!</p>
+            <a
+              href={`/library/${savedStoryId}`}
+              className="text-sm text-green-600 underline hover:text-green-800"
+            >
+              View story in library →
+            </a>
+          </div>
+        ) : (
+          <>
+            <Button onClick={onSave} disabled={saveLoading} className="w-full">
+              {saveLoading
+                ? "Saving…"
+                : `Save as Story — deducts ${1 + imageCost} credits`}
+            </Button>
+            {saveError && (
+              <p className="text-xs text-destructive">{saveError}</p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGenerationTabProps) {
@@ -948,6 +1173,18 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   // Stage 5
   const [imagePrompts, setImagePrompts] = useState<string[] | null>(null)
 
+  // Stage 6
+  const [imagesLoading, setImagesLoading] = useState(false)
+  const [imagesProgress, setImagesProgress] = useState(0)
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImageResult[] | null>(null)
+  const [imagesError, setImagesError] = useState<string | null>(null)
+
+  // Stage 7
+  const [storyTitle, setStoryTitle] = useState("")
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [savedStoryId, setSavedStoryId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   const textProviders = listTextProviders()
   const imageProviders = listImageProviders()
   const selectedStoryType = storyTypes.find(t => t.id === storyTypeId) ?? null
@@ -960,6 +1197,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const canGenerateText = !!promptsResult && !textLoading && !promptsLoading
   const canExtractVisual = storyPages.length > 0 && !visualLoading && !textLoading
   const canBuildReference = selectedProfileIds.length > 0 && !referenceLoading
+  const canGenerateImages = !!imagePrompts && !!referenceResult && includeImages && !imagesLoading && !referenceLoading
+  const canSaveStory = !!textResult && !saveLoading && (!includeImages || !!generatedImages)
 
   function toggleProfile(id: string) {
     setSelectedProfileIds(prev =>
@@ -982,6 +1221,14 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
     setReferenceResult(null)
     setReferenceError(null)
     setImagePrompts(null)
+    setImagesLoading(false)
+    setImagesProgress(0)
+    setGeneratedImages(null)
+    setImagesError(null)
+    setStoryTitle("")
+    setSaveLoading(false)
+    setSavedStoryId(null)
+    setSaveError(null)
   }
 
   async function triggerBuildImagePrompts(vc: StoryVisualContext, rr: BuildReferenceResult) {
@@ -1088,9 +1335,15 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       }
 
       if (fullText && doneData) {
-        const pages = splitPages(fullText)
-        setTextResult({ fullText, ...doneData })
+        const titleMatch = fullText.match(/^Title:\s*(.+?)(?:\r?\n|$)/im)
+        const extracted = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, "") ?? ""
+        const cleanText = extracted
+          ? fullText.replace(/^Title:\s*.+?(?:\r?\n)+/im, "").trim()
+          : fullText
+        const pages = splitPages(cleanText)
+        setTextResult({ fullText: cleanText, ...doneData })
         setStoryPages(pages)
+        setStoryTitle(extracted)
         setStreamingText("")
       }
     } catch {
@@ -1161,6 +1414,128 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       setReferenceError("Network error. Please try again.")
     } finally {
       setReferenceLoading(false)
+    }
+  }
+
+  async function generateImages() {
+    if (!imagePrompts) return
+    setImagesLoading(true)
+    setImagesProgress(0)
+    setImagesError(null)
+    const referenceUrl = referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    const results: GeneratedImageResult[] = []
+
+    for (let i = 0; i < imagePrompts.length; i++) {
+      try {
+        const res = await fetch("/api/workbench/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: imagePrompts[i],
+            referenceImageUrl: referenceUrl,
+            imageProvider,
+            pageIndex: i,
+          }),
+        })
+        const data = await res.json()
+        if (res.ok) {
+          results.push(data as GeneratedImageResult)
+        } else {
+          results.push({
+            pageIndex: i, url: "/images/story-image-error.svg", isErrorPlaceholder: true,
+            provider: imageProvider, model: "", referenceUsed: false, attempts: 0,
+            attemptsLog: [], isBlackImage: false, contentLengthBytes: null,
+            rawResponseStatus: null, error: (data as { error?: string }).error ?? "Failed", durationMs: 0,
+          })
+        }
+      } catch {
+        results.push({
+          pageIndex: i, url: "/images/story-image-error.svg", isErrorPlaceholder: true,
+          provider: imageProvider, model: "", referenceUsed: false, attempts: 0,
+          attemptsLog: [], isBlackImage: false, contentLengthBytes: null,
+          rawResponseStatus: null, error: "Network error", durationMs: 0,
+        })
+      }
+      setImagesProgress(i + 1)
+      setGeneratedImages([...results])
+    }
+    setImagesLoading(false)
+  }
+
+  async function rerunImage(pageIndex: number) {
+    if (!imagePrompts?.[pageIndex] || !generatedImages) return
+    const referenceUrl = referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    try {
+      const res = await fetch("/api/workbench/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: imagePrompts[pageIndex], referenceImageUrl: referenceUrl, imageProvider, pageIndex }),
+      })
+      const data = await res.json()
+      const updated = [...generatedImages]
+      if (res.ok) {
+        updated[pageIndex] = data as GeneratedImageResult
+      } else {
+        updated[pageIndex] = {
+          ...updated[pageIndex],
+          isErrorPlaceholder: true,
+          url: "/images/story-image-error.svg",
+          error: (data as { error?: string }).error ?? "Failed",
+        }
+      }
+      setGeneratedImages(updated)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function saveStory() {
+    if (!textResult) return
+    setSaveLoading(true)
+    setSaveError(null)
+    const images = (generatedImages ?? []).map(r => ({
+      url: r.url ?? "/images/story-image-error.svg",
+      isErrorPlaceholder: r.isErrorPlaceholder,
+      pageIndex: r.pageIndex,
+    }))
+    const generationParams = {
+      kid_profile_ids: selectedProfileIds,
+      kid_names: selectedProfiles.map(p => p.name),
+      story_type_id: storyTypeId,
+      art_style_id: artStyleId,
+      story_length: storyLength,
+      text_density: textDensity,
+      model: textResult.model,
+      image_provider: includeImages ? imageProvider : undefined,
+      workbench: true,
+    }
+    try {
+      const res = await fetch("/api/workbench/save-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: storyTitle || "Untitled Story",
+          storyPages,
+          images,
+          generationParams,
+          profileIds: selectedProfileIds,
+          storyTypeId,
+          artStyleId,
+          storyLength,
+          textDensity,
+          includeImages,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSavedStoryId((data as { storyId: string }).storyId)
+      } else {
+        setSaveError((data as { error?: string }).error ?? "Failed to save story")
+      }
+    } catch {
+      setSaveError("Network error. Please try again.")
+    } finally {
+      setSaveLoading(false)
     }
   }
 
@@ -1417,11 +1792,32 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
           >
             {referenceLoading ? "Building…" : "Build Reference Image"}
           </Button>
-          <Button disabled className="w-full">Generate Images</Button>
-          <Button disabled variant="outline" className="w-full">
-            Save as Story
-            <span className="ml-auto text-xs text-muted-foreground">(costs credits)</span>
+          <Button
+            disabled={!canGenerateImages}
+            onClick={generateImages}
+            className="w-full"
+          >
+            {imagesLoading
+              ? `Generating… (${imagesProgress}/${imagePrompts?.length ?? 0})`
+              : "Generate Images"}
           </Button>
+          {imagesError && (
+            <p className="text-xs text-destructive px-1">{imagesError}</p>
+          )}
+          <Button
+            disabled={!canSaveStory}
+            variant="outline"
+            onClick={saveStory}
+            className="w-full"
+          >
+            {saveLoading ? "Saving…" : "Save as Story"}
+            {!saveLoading && (
+              <span className="ml-auto text-xs text-muted-foreground">(costs credits)</span>
+            )}
+          </Button>
+          {saveError && (
+            <p className="text-xs text-destructive px-1">{saveError}</p>
+          )}
           <Button variant="ghost" className="w-full" onClick={reset}>Reset</Button>
         </div>
       </div>
@@ -1609,6 +2005,32 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                 prompts={imagePrompts}
                 scenes={visualResult.visualContext.pageScenes}
                 onPromptsChange={setImagePrompts}
+              />
+            )}
+
+            {/* Stage 6 — images loading or partial results */}
+            {(imagesLoading || generatedImages) && imagePrompts && (
+              <Stage6Card
+                results={generatedImages ?? []}
+                pages={storyPages}
+                totalImages={imagePrompts.length}
+                isLoading={imagesLoading}
+                progress={imagesProgress}
+                onRerunPage={rerunImage}
+              />
+            )}
+
+            {/* Stage 7 — save as story (shown once text is ready) */}
+            {textResult && !textLoading && (
+              <Stage7Card
+                storyTitle={storyTitle}
+                onTitleChange={setStoryTitle}
+                storyLength={storyLength}
+                includeImages={includeImages}
+                savedStoryId={savedStoryId}
+                saveLoading={saveLoading}
+                saveError={saveError}
+                onSave={saveStory}
               />
             )}
           </div>

@@ -12,6 +12,7 @@ interface Profile {
   reference_image_path: string | null
   combined_reference_path: string | null
   character_illustration_path: string | null
+  illustration_status?: string | null
 }
 
 interface StoryType {
@@ -62,7 +63,7 @@ export function WorkbenchClient({ profiles, storyTypes, artStyles }: WorkbenchCl
       </div>
 
       {activeTab === "story" && <StoryGenerationTab profiles={profiles} storyTypes={storyTypes} artStyles={artStyles} />}
-      {activeTab === "characters" && <CharacterReferencesTab />}
+      {activeTab === "characters" && <CharacterReferencesTab profiles={profiles} />}
     </div>
   )
 }

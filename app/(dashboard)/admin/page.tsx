@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import Link from "next/link"
 import type { Story, KidProfile, StoryTemplate } from "@/types"
 import PromptViewer from "@/components/admin/PromptViewer"
 import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
@@ -66,7 +67,12 @@ export default async function AdminPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6">
-        <h1 className="font-serif text-2xl font-semibold text-foreground">Prompt Log</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="font-serif text-2xl font-semibold text-foreground">Prompt Log</h1>
+          <Link href="/admin/workbench" className="text-sm text-muted-foreground hover:text-foreground">
+            → Prompt Workbench
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Generation prompts for the {stories.length} most recent stories. Expand a row to see all prompts sent.
         </p>
