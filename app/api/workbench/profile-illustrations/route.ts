@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { createSignedImageUrlsMap } from "@/lib/storage/images"
+import type { KidProfile } from "@/types"
+
+type ProfileWithIllustrations = KidProfile & {
+  character_illustration_url?: string | null
+  toy_reference_image_path?: string | null
+  toy_reference_image_url?: string | null
+  combined_reference_url?: string | null
+  illustration_status?: string | null
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -31,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   if (!profileRow) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
 
-  const p = profileRow as Record<string, unknown>
+  const p = profileRow as unknown as ProfileWithIllustrations
 
   const paths = [
     p.reference_image_path,
@@ -42,9 +51,9 @@ export async function POST(request: NextRequest) {
 
   const signedUrlsMap = await createSignedImageUrlsMap(service, paths)
 
-  function resolve(path: string | unknown, fallback: string | unknown): string | null {
-    if (typeof path === "string" && path) return signedUrlsMap.get(path) ?? (typeof fallback === "string" ? fallback : null)
-    return typeof fallback === "string" ? fallback : null
+  function resolve(path: string | null | undefined, fallback: string | null | undefined): string | null {
+    if (path) return signedUrlsMap.get(path) ?? fallback ?? null
+    return fallback ?? null
   }
 
   return NextResponse.json({
