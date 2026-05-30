@@ -8,8 +8,8 @@ export default function GenerateHarnessPage() {
     <main className="min-h-screen bg-background p-6">
       <StoryGenerator
         profiles={[
-          { id: "kid-luna", name: "Luna", age: 6, age_months: 3 },
-          { id: "kid-max", name: "Max", age: 4, age_months: 0 },
+          { id: "kid-luna", name: "Luna", age: 6, age_months: 3, reference_image_path: "/illustrations/luna.jpg" },
+          { id: "kid-max", name: "Max", age: 4, age_months: 0, reference_image_path: "/illustrations/max.jpg" },
         ]}
         storyTypes={[
           { id: "type-adventure", name: "Adventure", description: "An adventure story", extra_input_label: null, extra_input_hint: null },
