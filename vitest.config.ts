@@ -12,5 +12,8 @@ export default defineConfig({
     setupFiles: ["./tests/setup/vitest.ts"],
     include: ["tests/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["tests/e2e/**", "node_modules/**", ".next/**"],
+    env: {
+      NEXT_PUBLIC_ENABLE_MULTI_PROFILE: "true",
+    },
   },
 })

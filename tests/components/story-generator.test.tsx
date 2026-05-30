@@ -72,7 +72,7 @@ describe("StoryGenerator", () => {
       })
     )
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
-      profileIds: ["kid-luna"],
+      profileIds: ["kid-luna", "kid-max"],
       artStyleId: "watercolor",
       storyLength: "medium",
       storyDescription: "a rocket bedtime race",
