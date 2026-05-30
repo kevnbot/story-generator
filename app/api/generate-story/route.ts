@@ -18,6 +18,7 @@ import {
 import type { KidProfile, StoryTemplate, StoryImage } from "@/types"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib/story-density"
+import { FEATURES } from "@/lib/config/features"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
 
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest) {
   if (!profileIds?.length) {
     return NextResponse.json({ error: "profileIds required" }, { status: 400 })
   }
+
+  const enforcedProfileIds = FEATURES.multiProfile ? profileIds : profileIds.slice(0, 1)
 
   const { allowed } = await checkStoryRateLimit(user.id)
   if (!allowed) {
@@ -94,7 +97,7 @@ export async function POST(request: NextRequest) {
     service
       .from("kid_profiles")
       .select("*")
-      .in("id", profileIds)
+      .in("id", enforcedProfileIds)
       .eq("account_id", userRow.account_id)
       .is("deleted_at", null),
     service

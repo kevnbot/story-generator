@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { formatAge } from "@/lib/ai/prompt-builder"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensity, type TextDensityKey } from "@/lib/story-density"
+import { FEATURES } from "@/lib/config/features"
 
 interface Profile {
   id: string
@@ -64,8 +65,8 @@ export function StoryGenerator({
 }: StoryGeneratorProps) {
   const eligibleProfileIds = profiles.filter(hasIllustration).map(p => p.id)
   const initialIds = defaultProfileIds.length > 0
-    ? new Set(defaultProfileIds)
-    : new Set(eligibleProfileIds)
+    ? new Set(FEATURES.multiProfile ? defaultProfileIds : defaultProfileIds.slice(0, 1))
+    : new Set(FEATURES.multiProfile ? eligibleProfileIds : eligibleProfileIds.slice(0, 1))
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(initialIds)
   const [storyTypeId, setStoryTypeId] = useState(storyTypes[0]?.id ?? "")
@@ -94,6 +95,10 @@ export function StoryGenerator({
   function toggleProfile(id: string) {
     const profile = profiles.find(p => p.id === id)
     if (!profile || !hasIllustration(profile)) return
+    if (!FEATURES.multiProfile) {
+      setSelectedIds(new Set([id]))
+      return
+    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -309,7 +314,9 @@ export function StoryGenerator({
           {/* Profile selector */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Who stars in this story?</label>
+              <label className="text-sm font-medium">
+                {FEATURES.multiProfile ? "Select characters for your story" : "Select a character for your story"}
+              </label>
               {profiles.length > 1 && (
                 <span className="text-xs text-muted-foreground">{selectionLabel} selected</span>
               )}
@@ -353,7 +360,7 @@ export function StoryGenerator({
                 )
               })}
             </div>
-            {profiles.length > 1 && (
+            {FEATURES.multiProfile && profiles.length > 1 && (
               <p className="text-xs text-muted-foreground">
                 Select multiple kids to have them all appear in the story together.
               </p>
