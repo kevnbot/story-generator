@@ -12,6 +12,13 @@ type ProfileWithIllustrations = KidProfile & {
   illustration_status?: string | null
 }
 
+interface HistoryRow {
+  id: string
+  image_type: string
+  image_url: string
+  created_at: string
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -49,7 +56,36 @@ export async function POST(request: NextRequest) {
     p.combined_reference_path,
   ].filter((v): v is string => typeof v === "string" && v.length > 0)
 
-  const signedUrlsMap = await createSignedImageUrlsMap(service, paths)
+  const [signedUrlsMap, charHistory, toyHistory, combinedHistory] = await Promise.all([
+    createSignedImageUrlsMap(service, paths),
+    service
+      .from("profile_reference_image_history")
+      .select("id, image_type, image_url, created_at")
+      .eq("profile_id", profileId)
+      .eq("image_type", "character")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    service
+      .from("profile_reference_image_history")
+      .select("id, image_type, image_url, created_at")
+      .eq("profile_id", profileId)
+      .eq("image_type", "toy")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    service
+      .from("profile_reference_image_history")
+      .select("id, image_type, image_url, created_at")
+      .eq("profile_id", profileId)
+      .eq("image_type", "combined")
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ])
+
+  const history = {
+    character: (charHistory.data ?? []) as HistoryRow[],
+    toy: (toyHistory.data ?? []) as HistoryRow[],
+    combined: (combinedHistory.data ?? []) as HistoryRow[],
+  }
 
   function resolve(path: string | null | undefined, fallback: string | null | undefined): string | null {
     if (path) return signedUrlsMap.get(path) ?? fallback ?? null
@@ -62,5 +98,6 @@ export async function POST(request: NextRequest) {
     character_illustration_url: resolve(p.character_illustration_path, p.character_illustration_url),
     toy_reference_image_url: resolve(p.toy_reference_image_path, p.toy_reference_image_url),
     combined_reference_url: resolve(p.combined_reference_path, p.combined_reference_url),
+    history,
   })
 }

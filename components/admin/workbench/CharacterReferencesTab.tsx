@@ -14,6 +14,12 @@ interface ProfileSummary {
   illustration_status?: string | null
 }
 
+interface HistoryRow {
+  id: string
+  image_url: string
+  created_at: string
+}
+
 interface FullProfile {
   id: string
   name: string
@@ -40,6 +46,11 @@ interface FullProfile {
   combined_reference_url?: string | null
   combined_reference_path?: string | null
   illustration_status?: string | null
+  history?: {
+    character: HistoryRow[]
+    toy: HistoryRow[]
+    combined: HistoryRow[]
+  }
 }
 
 interface StepResult {
@@ -79,7 +90,7 @@ function ImagePreview({ url, alt, path }: { url: string | null | undefined; alt:
   if (url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt={alt} className="w-full rounded-lg object-cover max-h-48" />
+      <img src={url} alt={alt} className="w-full h-48 rounded-lg object-contain" />
     )
   }
   if (path) {
@@ -92,6 +103,70 @@ function ImagePreview({ url, alt, path }: { url: string | null | undefined; alt:
   return (
     <div className="w-full rounded-lg bg-muted/30 border border-dashed flex items-center justify-center py-6 text-xs text-muted-foreground">
       No illustration yet
+    </div>
+  )
+}
+
+function formatHistoryDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+function PreviousVersions({
+  current,
+  rows,
+  onUse,
+}: {
+  current: { url: string } | null
+  rows: HistoryRow[]
+  onUse: (url: string) => Promise<void>
+}) {
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<{ id: string; message: string } | null>(null)
+
+  if (!current && rows.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Previous versions</p>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {current && (
+          <div className="flex-none flex flex-col items-center gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={current.url} alt="Current version" className="w-16 h-16 rounded object-cover border" />
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+              Current
+            </span>
+          </div>
+        )}
+        {rows.map(row => (
+          <div key={row.id} className="flex-none flex flex-col items-center gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={row.image_url} alt="Previous version" className="w-16 h-16 rounded object-cover border" />
+            <span className="text-[10px] text-muted-foreground">{formatHistoryDate(row.created_at)}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-[10px] px-1.5 h-5"
+              disabled={savingId === row.id}
+              onClick={async () => {
+                setSavingId(row.id)
+                setSaveError(null)
+                try {
+                  await onUse(row.image_url)
+                } catch (e) {
+                  setSaveError({ id: row.id, message: e instanceof Error ? e.message : "Failed" })
+                } finally {
+                  setSavingId(null)
+                }
+              }}
+            >
+              {savingId === row.id ? "Saving…" : "Use this version"}
+            </Button>
+            {saveError?.id === row.id && (
+              <span className="text-[10px] text-destructive">{saveError.message}</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -155,7 +230,7 @@ function StepResultPanel({ result }: { result: StepResult }) {
       )}
       {result.url && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={result.url} alt="Generated result" className="w-full rounded-lg object-cover max-h-48" />
+        <img src={result.url} alt="Generated result" className="w-full h-48 rounded-lg object-contain" />
       )}
     </div>
   )
@@ -214,8 +289,12 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     if (!selectedProfileId) return
     const setLoading = step === "character" ? setCharLoading : step === "toy" ? setToyLoading : setCombinedLoading
     const setResult = step === "character" ? setCharResult : step === "toy" ? setToyResult : setCombinedResult
+    const savedFieldKey = step === "character" ? "character_illustration_path"
+      : step === "toy" ? "toy_reference_image_path"
+      : "combined_reference_path"
     setLoading(true)
     setResult(null)
+    setSavedFields(prev => prev.filter(f => f !== savedFieldKey))
     try {
       const res = await fetch("/api/workbench/generate-reference-step", {
         method: "POST",
@@ -242,30 +321,31 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     }
   }
 
-  async function saveImages(opts: { characterUrl?: string; toyUrl?: string; combinedUrl?: string }) {
-    if (!selectedProfileId) return
+  async function saveImages(opts: { characterUrl?: string; toyUrl?: string; combinedUrl?: string }): Promise<boolean> {
+    if (!selectedProfileId) return false
     const res = await fetch("/api/workbench/save-reference-images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ profileId: selectedProfileId, ...opts }),
     })
-    if (res.ok) {
-      const data = await res.json() as { updated: string[] }
-      setSavedFields(prev => [...new Set([...prev, ...data.updated])])
-      // Reload to get updated signed URLs
-      const profileRes = await fetch("/api/workbench/profile-illustrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileId: selectedProfileId }),
-      })
-      if (profileRes.ok) setFullProfile(await profileRes.json() as FullProfile)
-    }
+    if (!res.ok) return false
+    const data = await res.json() as { updated: string[] }
+    setSavedFields(prev => [...new Set([...prev, ...data.updated])])
+    // Reload to get updated signed URLs and history
+    const profileRes = await fetch("/api/workbench/profile-illustrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: selectedProfileId }),
+    })
+    if (profileRes.ok) setFullProfile(await profileRes.json() as FullProfile)
+    return true
   }
 
   async function saveCharacter() {
     if (!charResult?.url) return
     setSaveCharLoading(true)
     await saveImages({ characterUrl: charResult.url })
+    setCharResult(null)
     setSaveCharLoading(false)
   }
 
@@ -273,6 +353,7 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     if (!toyResult?.url) return
     setSaveToyLoading(true)
     await saveImages({ toyUrl: toyResult.url })
+    setToyResult(null)
     setSaveToyLoading(false)
   }
 
@@ -280,6 +361,7 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     if (!combinedResult?.url) return
     setSaveCombinedLoading(true)
     await saveImages({ combinedUrl: combinedResult.url })
+    setCombinedResult(null)
     setSaveCombinedLoading(false)
   }
 
@@ -290,7 +372,18 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
       toyUrl: toyResult?.url ?? undefined,
       combinedUrl: combinedResult?.url ?? undefined,
     })
+    setCharResult(null)
+    setToyResult(null)
+    setCombinedResult(null)
     setSaveAllLoading(false)
+  }
+
+  async function saveHistoryVersion(step: "character" | "toy" | "combined", url: string): Promise<void> {
+    const opts = step === "character" ? { characterUrl: url }
+      : step === "toy" ? { toyUrl: url }
+      : { combinedUrl: url }
+    const ok = await saveImages(opts)
+    if (!ok) throw new Error("Save failed")
   }
 
   const hasToy = !!(fullProfile?.toy?.name)
@@ -298,6 +391,9 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
   const charPromptPreview = fullProfile
     ? buildReferenceImagePrompt(fullProfile as unknown as KidProfile)
     : null
+  const currentCharUrl = fullProfile?.character_illustration_url ?? fullProfile?.reference_image_url ?? null
+  const currentToyUrl = fullProfile?.toy_reference_image_url ?? null
+  const currentCombinedUrl = fullProfile?.combined_reference_url ?? null
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -354,6 +450,12 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
                 path={fullProfile.character_illustration_path}
               />
             </div>
+
+            <PreviousVersions
+              current={currentCharUrl ? { url: currentCharUrl } : null}
+              rows={fullProfile.history?.character ?? []}
+              onUse={(url) => saveHistoryVersion("character", url)}
+            />
 
             {charPromptPreview && (
               <div>
@@ -414,6 +516,12 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
               />
             </div>
 
+            <PreviousVersions
+              current={currentToyUrl ? { url: currentToyUrl } : null}
+              rows={fullProfile.history?.toy ?? []}
+              onUse={(url) => saveHistoryVersion("toy", url)}
+            />
+
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -473,6 +581,12 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
                 path={fullProfile.combined_reference_path}
               />
             </div>
+
+            <PreviousVersions
+              current={currentCombinedUrl ? { url: currentCombinedUrl } : null}
+              rows={fullProfile.history?.combined ?? []}
+              onUse={(url) => saveHistoryVersion("combined", url)}
+            />
 
             <div className="flex gap-2">
               <Button
