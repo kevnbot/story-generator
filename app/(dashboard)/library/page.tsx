@@ -5,7 +5,7 @@ import StoryLibrary from "@/components/library/StoryLibrary"
 import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage/images"
 
 export const metadata = {
-  title: "Library | Story Generator",
+  title: "Your Story Shelf | My Genie Stories",
 }
 
 export default async function LibraryPage() {

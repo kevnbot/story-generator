@@ -31,15 +31,27 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
     <div className="max-w-2xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Kid Profiles</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Each profile personalizes stories for that child.
+          <h1 className="text-xl font-semibold" style={{ color: "#2e1065" }}>Characters</h1>
+          <p className="text-sm mt-0.5" style={{ color: "#a78bfa" }}>
+            Each character stars in their own personalized stories.
           </p>
         </div>
         {profiles.length > 0 && !showForm && !editingId && (
-          <Button onClick={() => setShowForm(true)} size="sm">
-            Add Profile
-          </Button>
+          <button
+            onClick={() => setShowForm(true)}
+            style={{
+              backgroundColor: "#7c3aed",
+              color: "#ffffff",
+              borderRadius: "10px",
+              padding: "8px 16px",
+              fontSize: "13px",
+              fontWeight: 500,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            + Add character
+          </button>
         )}
       </div>
 
@@ -162,9 +174,33 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
 
       {profiles.length === 0 && !showForm && (
         <div className="flex flex-col items-center justify-center min-h-[30vh] text-center gap-4">
-          <div className="text-5xl">👧</div>
-          <p className="text-muted-foreground">No profiles yet. Add one to get started.</p>
-          <Button onClick={() => setShowForm(true)}>Add Profile</Button>
+          <div
+            className="flex items-center justify-center w-16 h-16 rounded-2xl text-3xl"
+            style={{ backgroundColor: "#fef3c7", border: "1.5px solid #fbbf24" }}
+          >
+            ✦
+          </div>
+          <div>
+            <p className="text-base font-semibold" style={{ color: "#2e1065" }}>Who is this story for?</p>
+            <p className="text-sm mt-1" style={{ color: "#a78bfa" }}>
+              Create your child&apos;s character and your genie will bring them to life in every story.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            style={{
+              backgroundColor: "#7c3aed",
+              color: "#ffffff",
+              borderRadius: "12px",
+              padding: "12px 24px",
+              fontSize: "14px",
+              fontWeight: 500,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            ✦ Create a character
+          </button>
         </div>
       )}
     </div>
