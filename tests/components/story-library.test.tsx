@@ -100,7 +100,7 @@ describe("StoryLibrary", () => {
   it("shows empty state and new story link", () => {
     render(<StoryLibrary profiles={profiles} templates={templates} stories={[]} />)
 
-    expect(screen.getByText("No stories yet")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Create a story" })).toHaveAttribute("href", "/generate")
+    expect(screen.getByText("Your shelf is waiting...")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Make your first wish/ })).toHaveAttribute("href", "/generate")
   })
 })

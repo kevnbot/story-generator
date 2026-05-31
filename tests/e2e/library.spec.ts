@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test"
 test("library filters and sorting work with fixture stories", async ({ page }) => {
   await page.goto("/test-harness/library")
 
-  await expect(page.getByText("3 stories")).toBeVisible()
+  await expect(page.getByText("3 stories granted so far")).toBeVisible()
   await page.getByLabel("All kids").selectOption("kid-max")
 
   await expect(page.getByText("1 story of 3")).toBeVisible()

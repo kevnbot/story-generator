@@ -86,7 +86,16 @@ export default function BookCard({ story, childName, isNew }: BookCardProps) {
   })
 
   return (
-    <Link href={`/library/${story.id}`} className="group flex flex-col items-center gap-2.5 focus:outline-hidden">
+    <Link
+      href={`/library/${story.id}`}
+      className="group flex flex-col items-center gap-2.5 focus:outline-hidden"
+      style={{
+        backgroundColor: "#ffffff",
+        border: "1px solid #e9d5ff",
+        borderRadius: "10px",
+        overflow: "hidden",
+      }}
+    >
       {/* Book */}
       <div
         className="relative w-full cursor-pointer transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:rotate-1 group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-brand-500"
@@ -126,7 +135,7 @@ export default function BookCard({ story, childName, isNew }: BookCardProps) {
           <div className="relative z-10 w-full px-2.5 pb-3 text-center">
             <p
               className="font-serif text-[11px] font-semibold leading-tight text-white/95"
-              style={{ textShadow: "0 1px 3px rgba(0,0,0,0.45)" }}
+              style={{ textShadow: "0 1px 3px rgba(0,0,0,0.45)", color: "#2e1065" }}
             >
               {story.title}
             </p>
@@ -151,7 +160,7 @@ export default function BookCard({ story, childName, isNew }: BookCardProps) {
 
       {/* Below-book metadata */}
       <div className="w-full text-center">
-        <p className="text-[11px] text-muted-foreground">{dateLabel}</p>
+        <p className="text-[11px] text-muted-foreground" style={{ color: "#a78bfa" }}>{dateLabel}</p>
       </div>
     </Link>
   )
