@@ -52,3 +52,34 @@
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
 }
+
+@theme {
+  /* Genie Purple — brand primary */
+  --color-genie-purple-50: #f5f0ff;
+  --color-genie-purple-100: #e9d5ff;
+  --color-genie-purple-200: #c4b5fd;
+  --color-genie-purple-400: #a78bfa;
+  --color-genie-purple-600: #7c3aed;
+  --color-genie-purple-700: #6d28d9;
+  --color-genie-purple-900: #2e1065;
+
+  /* Genie Gold — wishes and warmth */
+  --color-genie-gold-50: #fef3c7;
+  --color-genie-gold-200: #fde68a;
+  --color-genie-gold-400: #fbbf24;
+  --color-genie-gold-500: #f59e0b;
+  --color-genie-gold-700: #d97706;
+  --color-genie-gold-800: #92400e;
+
+  /* Genie Green — generosity and giving */
+  --color-genie-green-50: #f0fdf4;
+  --color-genie-green-200: #bbf7d0;
+  --color-genie-green-600: #16a34a;
+  --color-genie-green-800: #14532d;
+  --color-genie-green-900: #166534;
+
+  /* Backgrounds */
+  --color-cream: #fffbf5;
+  --color-nav-bg: #fff7ed;
+  --color-nav-border: #f0d9c0;
+}
