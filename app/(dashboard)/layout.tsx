@@ -27,13 +27,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const hasAdminAccess = await isPlatformAdmin(user.id)
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#fffbf5" }}>
       <Nav
         userName={profile?.display_name ?? null}
         credits={account?.credit_balance ?? 0}
         isAdmin={hasAdminAccess}
       />
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">{children}</main>
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 pb-20 md:pb-6">{children}</main>
     </div>
   )
 }

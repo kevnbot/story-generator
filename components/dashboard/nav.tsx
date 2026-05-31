@@ -3,14 +3,11 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { logout } from "@/app/actions/auth"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
-const navLinks = [
-  { href: "/generate", label: "Generate", icon: "✨" },
-  { href: "/library", label: "My Stories", icon: "📚" },
-  { href: "/profiles", label: "Profiles", icon: "👧" },
-  { href: "/account/security", label: "Account", icon: "🔒" },
+const tabs = [
+  { href: "/generate", label: "Create", icon: "✦" },
+  { href: "/library", label: "Library", icon: "📚" },
+  { href: "/profiles", label: "Profile", icon: "👤" },
 ]
 
 export function Nav({
@@ -22,45 +19,107 @@ export function Nav({
   isAdmin: boolean
 }) {
   const pathname = usePathname()
-  const links = isAdmin
-    ? [...navLinks, { href: "/admin", label: "Admin", icon: "🛠️" }]
-    : navLinks
 
   return (
-    <header className="border-b border-border bg-white sticky top-0 z-10">
-      <div className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-6">
-        <Link href="/generate" className="flex items-center gap-2 font-semibold text-brand-700 shrink-0">
-          <span>📖</span>
-          <span className="hidden sm:inline">Story Generator</span>
-        </Link>
-        <nav className="flex items-center gap-1 flex-1">
-          {links.map(({ href, label, icon }) => (
+    <>
+      {/* ── Top nav bar ── */}
+      <header
+        className="sticky top-0 z-10"
+        style={{ backgroundColor: "#fff7ed", borderBottom: "0.5px solid #f0d9c0" }}
+      >
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-6">
+
+          {/* Logo */}
+          <Link href="/generate" className="flex items-center gap-2 shrink-0">
+            <span style={{ color: "#d97706", fontSize: "18px", fontWeight: 600 }}>✦</span>
+            <span style={{ color: "#6d28d9", fontSize: "15px", fontWeight: 600 }}>
+              My Genie Stories
+            </span>
+          </Link>
+
+          {/* Desktop inline tab links — hidden on mobile */}
+          <nav className="hidden md:flex items-center gap-1 flex-1">
+            {tabs.map(({ href, label, icon }) => {
+              const isActive = pathname.startsWith(href)
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    color: isActive ? "#7c3aed" : "#a78bfa",
+                    backgroundColor: isActive ? "#f5f0ff" : "transparent",
+                  }}
+                >
+                  <span>{icon}</span>
+                  <span>{label}</span>
+                </Link>
+              )
+            })}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                style={{ color: "#a78bfa" }}
+              >
+                <span>🛠️</span>
+                <span>Admin</span>
+              </Link>
+            )}
+          </nav>
+
+          {/* Right side: wishes pill + sign out */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Wishes pill */}
+            <div
+              className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium"
+              style={{
+                backgroundColor: "#fef3c7",
+                border: "1px solid #fbbf24",
+                color: "#92400e",
+              }}
+            >
+              <span>✦</span>
+              <span>{credits} wishes</span>
+            </div>
+            <form action={logout}>
+              <button
+                type="submit"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Bottom tab bar — mobile only ── */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-10 flex"
+        style={{
+          backgroundColor: "#fff7ed",
+          borderTop: "0.5px solid #f0d9c0",
+          height: "56px",
+        }}
+      >
+        {tabs.map(({ href, label, icon }) => {
+          const isActive = pathname.startsWith(href)
+          return (
             <Link
               key={href}
               href={href}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                pathname.startsWith(href)
-                  ? "bg-brand-50 text-brand-700"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              )}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5"
+              style={{ color: isActive ? "#7c3aed" : "#c4b5fd" }}
             >
-              <span>{icon}</span>
-              <span className="hidden sm:inline">{label}</span>
+              <span style={{ fontSize: "18px", lineHeight: 1 }}>{icon}</span>
+              <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.3px" }}>
+                {label}
+              </span>
             </Link>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-xs text-muted-foreground hidden sm:block">
-            <span className="font-semibold text-foreground">{credits}</span> credits
-          </span>
-          <form action={logout}>
-            <Button type="submit" variant="ghost" size="sm">
-              Sign out
-            </Button>
-          </form>
-        </div>
-      </div>
-    </header>
+          )
+        })}
+      </nav>
+    </>
   )
 }
