@@ -17,7 +17,7 @@ test("story generator handles a mocked streamed success response", async ({ page
   await page.getByRole("button", { name: /Medium/ }).click()
   await page.getByLabel(/Title/).fill("Rocket Bedtime")
   await page.getByLabel("What should the story be about?").fill("a rocket bedtime race")
-  await page.getByRole("button", { name: "Generate Story" }).click()
+  await page.getByRole("button", { name: "✦ Grant my wishes" }).click()
 
   await expect(page.getByRole("heading", { name: "Rocket Bedtime" })).toBeVisible()
   await expect(page.getByRole("link", { name: "Read Story" })).toHaveAttribute("href", "/library/story-123")
@@ -33,7 +33,7 @@ test("story generator shows mocked API errors", async ({ page }) => {
   })
 
   await page.goto("/test-harness/generate")
-  await page.getByRole("button", { name: "Generate Story" }).click()
+  await page.getByRole("button", { name: "✦ Grant my wishes" }).click()
 
-  await expect(page.getByText("Insufficient credits")).toBeVisible()
+  await expect(page.getByText("Not enough wishes")).toBeVisible()
 })
