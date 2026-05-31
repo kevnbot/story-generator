@@ -1,6 +1,5 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
-import Link from "next/link"
 import type { Story, KidProfile, StoryTemplate } from "@/types"
 import BookReader from "@/components/library/BookReader"
 import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
@@ -64,24 +63,5 @@ export default async function StoryDetailPage({
     images: resolveStoryImagesForUi((r.images ?? []) as Story["images"], signedUrlsByPath),
   }
 
-  return (
-    <div className="mx-auto max-w-xl px-4">
-      <div className="no-print mb-2 flex items-center justify-between">
-        <Link
-          href="/library"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Library
-        </Link>
-        <Link
-          href={`/generate?parentStoryId=${story.id}`}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          + New version
-        </Link>
-      </div>
-
-      <BookReader story={story} />
-    </div>
-  )
+  return <BookReader story={story} />
 }

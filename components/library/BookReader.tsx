@@ -166,7 +166,7 @@ export default function BookReader({ story }: { story: Story }) {
   return (
     <>
       {/* ── Interactive reader (hidden when printing) ── */}
-      <div id="book-reader" className="flex flex-col items-center gap-6 py-4">
+      <div id="book-reader" className="flex flex-col items-center gap-6 py-4 px-4">
         {/* Book */}
         <div
           className="relative w-full max-w-[480px] overflow-hidden rounded-2xl"
@@ -208,20 +208,31 @@ export default function BookReader({ story }: { story: Story }) {
             onClick={prev}
             disabled={current === 0}
             aria-label="Previous page"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-30"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
 
-          <span className="w-20 text-center text-sm tabular-nums text-muted-foreground">
-            {current + 1} / {total}
-          </span>
+          <div className="flex items-center gap-1.5" aria-label={`Page ${current + 1} of ${total}`}>
+            {Array.from({ length: total }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrent(i)}
+                aria-label={`Go to page ${i + 1}`}
+                className="h-2 rounded-full transition-all"
+                style={{
+                  width: i === current ? "1.5rem" : "0.5rem",
+                  background: i === current ? "#ffffff" : "rgba(255,255,255,0.3)",
+                }}
+              />
+            ))}
+          </div>
 
           <button
             onClick={next}
             disabled={current === total - 1}
             aria-label="Next page"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-30"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -231,14 +242,14 @@ export default function BookReader({ story }: { story: Story }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
+            className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
           >
             <Download className="h-4 w-4" />
             Download PDF
           </button>
           <button
             onClick={() => setShowPrompts(true)}
-            className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
+            className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
           >
             <ScrollText className="h-4 w-4" />
             View Prompt
