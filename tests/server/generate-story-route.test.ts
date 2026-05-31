@@ -3,7 +3,43 @@ import type { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => {
   const calls: Array<{ table: string; action: string; payload?: unknown; filters: Array<[string, unknown]> }> = []
-  const state = { creditBalance: 10 }
+  const defaultProfiles = [
+    {
+      id: "kid-luna",
+      account_id: "account-1",
+      name: "Luna",
+      age: 6,
+      age_months: 0,
+      gender: "girl",
+      appearance: {},
+      personality_tags: ["curious"],
+      toy: { name: "Moon Bear" },
+      prompt_summary: "Luna is curious.",
+      reference_image_path: "illustrations/luna.jpg",
+      reference_image_url: null,
+      combined_reference_path: null,
+      character_illustration_path: null,
+      deleted_at: null,
+      created_at: "2026-05-01T00:00:00.000Z",
+      updated_at: "2026-05-01T00:00:00.000Z",
+    },
+  ]
+  const state = {
+    creditBalance: 10,
+    profiles: [...defaultProfiles],
+    imageKeyAvailable: false,
+    signedUrlMissingPaths: new Set<string>(),
+  }
+  const imageProvider = {
+    id: "fal-kontext-multi",
+    label: "FLUX Pro Kontext Multi",
+    modelId: "fal-ai/flux-pro/kontext/multi",
+    supportsReferenceImages: true,
+    referenceMode: "multi",
+    maxReferenceImages: null,
+    supportsSeedControl: true,
+    generateImage: vi.fn(),
+  }
 
   class Query {
     private filters: Array<[string, unknown]> = []
@@ -36,27 +72,7 @@ const mocks = vi.hoisted(() => {
       if (this.table === "accounts" && this.action === "select") return { data: { credit_balance: state.creditBalance }, error: null }
       if (this.table === "kid_profiles") {
         return {
-          data: [
-            {
-              id: "kid-luna",
-              account_id: "account-1",
-              name: "Luna",
-              age: 6,
-              age_months: 0,
-              gender: "girl",
-              appearance: {},
-              personality_tags: ["curious"],
-              toy: { name: "Moon Bear" },
-              prompt_summary: "Luna is curious.",
-              reference_image_path: "illustrations/luna.jpg",
-              reference_image_url: null,
-              combined_reference_path: null,
-              character_illustration_path: null,
-              deleted_at: null,
-              created_at: "2026-05-01T00:00:00.000Z",
-              updated_at: "2026-05-01T00:00:00.000Z",
-            },
-          ],
+          data: state.profiles,
           error: null,
         }
       }
@@ -91,6 +107,8 @@ const mocks = vi.hoisted(() => {
   return {
     calls,
     state,
+    defaultProfiles,
+    imageProvider,
     getUser: vi.fn(),
     checkStoryRateLimit: vi.fn(),
     generateStoryStream: vi.fn(),
@@ -128,6 +146,21 @@ vi.mock("@/lib/ai/image", () => ({
   generateStoryImageWithReference: vi.fn(),
 }))
 
+vi.mock("@/lib/ai/providers/image/registry", () => ({
+  getImageProvider: vi.fn(() => mocks.imageProvider),
+  isImageProviderKeyAvailable: vi.fn(() => mocks.state.imageKeyAvailable),
+}))
+
+vi.mock("@/lib/storage/images", () => ({
+  buildStoryImagePath: vi.fn((_accountId: string, _jobId: string, sceneIndex: number, extension: string) => `story-${sceneIndex}.${extension}`),
+  copyRemoteImageToStoragePath: vi.fn(async () => null),
+  createSignedImageUrlsMap: vi.fn(async (_service: unknown, paths: string[]) =>
+    new Map(paths
+      .filter((path) => !mocks.state.signedUrlMissingPaths.has(path))
+      .map((path) => [path, `https://signed.local/${path}`]))
+  ),
+}))
+
 vi.mock("@/lib/ai/story", () => ({
   extractStoryTitle: vi.fn(async () => "Fallback Title"),
   extractStoryVisuals: vi.fn(),
@@ -137,12 +170,14 @@ vi.mock("@/lib/ai/story", () => ({
 
 vi.mock("@/lib/ai/prompt-builder/visual-context", () => ({
   extractVisualContext: vi.fn(async () => ({
-    setting: "",
-    timeOfDay: "evening",
-    recurringElements: [],
-    outfits: {},
-    storyCharacters: [],
-    pageScenes: [],
+    result: {
+      setting: "",
+      timeOfDay: "evening",
+      recurringElements: [],
+      outfits: {},
+      storyCharacters: [],
+      pageScenes: [],
+    },
   })),
 }))
 
@@ -154,8 +189,19 @@ describe("POST /api/generate-story", () => {
   beforeEach(() => {
     mocks.calls.length = 0
     mocks.state.creditBalance = 10
+    mocks.state.profiles = [...mocks.defaultProfiles]
+    mocks.state.imageKeyAvailable = false
+    mocks.state.signedUrlMissingPaths.clear()
     mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } })
     mocks.checkStoryRateLimit.mockResolvedValue({ allowed: true, remaining: 9 })
+    mocks.imageProvider.generateImage.mockResolvedValue({
+      url: "https://generated.local/story-image.png",
+      error: null,
+      isBlackImage: false,
+      attempts: 1,
+      modelId: "fal-ai/flux-pro/kontext/multi",
+      referenceImageCount: 2,
+    })
     mocks.generateStoryStream.mockImplementation(async function* () {
       yield "Title: Luna Moon Mission\n\nOnce upon a moon."
     })
@@ -216,6 +262,110 @@ describe("POST /api/generate-story", () => {
         table: "accounts",
         action: "update",
         payload: { credit_balance: 9 },
+      })
+    )
+  })
+
+  it("passes all selected profile references to the multi-reference image provider", async () => {
+    mocks.state.imageKeyAvailable = true
+    mocks.state.profiles = [
+      {
+        ...mocks.defaultProfiles[0],
+        id: "kid-luna",
+        name: "Luna",
+        reference_image_path: "illustrations/luna.jpg",
+      },
+      {
+        ...mocks.defaultProfiles[0],
+        id: "kid-max",
+        name: "Max",
+        gender: "boy",
+        reference_image_path: null,
+        character_illustration_path: "illustrations/max-character.jpg",
+      },
+      {
+        ...mocks.defaultProfiles[0],
+        id: "kid-ava",
+        name: "Ava",
+        gender: "girl",
+        reference_image_path: null,
+        character_illustration_path: null,
+        combined_reference_path: "illustrations/ava-combined.jpg",
+      },
+    ]
+    const { POST } = await import("@/app/api/generate-story/route")
+
+    const response = await POST(
+      new Request("http://test.local/api/generate-story", {
+        method: "POST",
+        body: JSON.stringify({
+          profileIds: ["kid-luna", "kid-max", "kid-ava"],
+          storyLength: "short",
+          storyTypeId: "bedtime",
+          includeImages: true,
+        }),
+      }) as NextRequest
+    )
+    const text = await readResponseText(response)
+
+    expect(response.status).toBe(200)
+    expect(text).toContain('"type":"done"')
+    expect(mocks.imageProvider.generateImage).toHaveBeenCalled()
+    expect(mocks.imageProvider.generateImage.mock.calls[0][1]).toMatchObject({
+      referenceImageUrl: "https://signed.local/illustrations/luna.jpg",
+      referenceImageUrls: [
+        "https://signed.local/illustrations/luna.jpg",
+        "https://signed.local/illustrations/max-character.jpg",
+        "https://signed.local/illustrations/ava-combined.jpg",
+      ],
+      referenceImageLabels: [
+        "Luna's profile reference",
+        "Max's profile reference",
+        "Ava's profile reference",
+      ],
+    })
+  })
+
+  it("fails before generation when a selected profile reference cannot be resolved", async () => {
+    mocks.state.imageKeyAvailable = true
+    mocks.state.profiles = [
+      {
+        ...mocks.defaultProfiles[0],
+        id: "kid-luna",
+        name: "Luna",
+        reference_image_path: "illustrations/luna.jpg",
+      },
+      {
+        ...mocks.defaultProfiles[0],
+        id: "kid-max",
+        name: "Max",
+        reference_image_path: "illustrations/max.jpg",
+      },
+    ]
+    mocks.state.signedUrlMissingPaths.add("illustrations/max.jpg")
+    const { POST } = await import("@/app/api/generate-story/route")
+
+    const response = await POST(
+      new Request("http://test.local/api/generate-story", {
+        method: "POST",
+        body: JSON.stringify({
+          profileIds: ["kid-luna", "kid-max"],
+          storyLength: "short",
+          storyTypeId: "bedtime",
+          includeImages: true,
+        }),
+      }) as NextRequest
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: "Reference images could not be resolved for: Max.",
+    })
+    expect(mocks.generateStoryStream).not.toHaveBeenCalled()
+    expect(mocks.calls).not.toContainEqual(
+      expect.objectContaining({
+        table: "generation_jobs",
+        action: "insert",
       })
     )
   })

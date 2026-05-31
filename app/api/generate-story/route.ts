@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
 import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
-import { applyArtStyleToReference, generateGroupReferenceImage } from "@/lib/ai/image"
-import { getImageProvider } from "@/lib/ai/providers/image/registry"
+import { getImageProvider, isImageProviderKeyAvailable } from "@/lib/ai/providers/image/registry"
+import { DEFAULT_IMAGE_PROVIDER_ID } from "@/lib/ai/providers/image/options"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
 import { joinNames, buildCharacterAnchor, formatAge } from "@/lib/ai/prompt-builder"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
+import { getProfileReferencePaths, resolveProfileReferences } from "@/lib/ai/profile-references"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import {
@@ -21,6 +22,21 @@ import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib
 import { FEATURES } from "@/lib/config/features"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
+const IMAGE_GENERATION_START_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 5000
+
+function buildAppearanceDescription(profile: KidProfile): string {
+  const parts: string[] = []
+  const appearance = profile.appearance
+  if (appearance.hair) parts.push(`${appearance.hair} hair`)
+  else if (appearance.hair_color && appearance.hair_style) parts.push(`${appearance.hair_color} ${appearance.hair_style} hair`)
+  else if (appearance.hair_color) parts.push(`${appearance.hair_color} hair`)
+  if (appearance.eye_color) parts.push(`${appearance.eye_color} eyes`)
+  if (appearance.skin_tone) parts.push(`${appearance.skin_tone} skin`)
+  if (appearance.glasses) parts.push("wears glasses")
+  if (appearance.freckles) parts.push("has freckles")
+  if (appearance.other) parts.push(appearance.other)
+  return parts.join(", ")
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -41,7 +57,7 @@ export async function POST(request: NextRequest) {
   const includeImages    = body?.includeImages    as boolean  ?? false
   const parentStoryId    = body?.parentStoryId    as string   | undefined
   const feedback         = body?.feedback         as string   | undefined
-  const imageProviderId  = (body?.imageProvider   as string   | undefined) ?? "fal"
+  const imageProviderId  = (body?.imageProvider   as string   | undefined) ?? DEFAULT_IMAGE_PROVIDER_ID
 
   if (!profileIds?.length) {
     return NextResponse.json({ error: "profileIds required" }, { status: 400 })
@@ -71,10 +87,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   const lengthConfig = STORY_LENGTHS[storyLength]
-  const imageProviderKeyAvailable =
-    imageProviderId === "openai" ? !!process.env.OPENAI_API_KEY :
-    imageProviderId === "gemini" ? !!process.env.GEMINI_API_KEY :
-    !!process.env.FAL_KEY
+  const imageProviderKeyAvailable = isImageProviderKeyAvailable(imageProviderId)
   const imagesEnabled = includeImages && imageProviderKeyAvailable
   const baseCredits = await config.creditsPerStory()
   const creditsNeeded = baseCredits + (imagesEnabled ? lengthConfig.imageCost : 0)
@@ -134,9 +147,32 @@ export async function POST(request: NextRequest) {
       : Promise.resolve({ data: null }),
   ])
 
-  const profiles = profilesResult.data as KidProfile[] | null
+  const profileRows = profilesResult.data as KidProfile[] | null
+  const profilesById = new Map((profileRows ?? []).map((profile) => [profile.id, profile]))
+  const profiles = enforcedProfileIds
+    .map((id) => profilesById.get(id))
+    .filter((profile): profile is KidProfile => Boolean(profile))
   if (!profiles?.length) return NextResponse.json({ error: "Profiles not found" }, { status: 404 })
   if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 })
+
+  const selectedImageProvider = getImageProvider(imageProviderId)
+  if (imagesEnabled && selectedImageProvider.referenceMode === "single" && profiles.length > 1) {
+    return NextResponse.json(
+      { error: `${selectedImageProvider.label} supports only one profile reference. Choose a multi-reference image provider for multi-character stories.` },
+      { status: 400 }
+    )
+  }
+  if (
+    imagesEnabled &&
+    selectedImageProvider.maxReferenceImages !== null &&
+    selectedImageProvider.maxReferenceImages > 0 &&
+    profiles.length > selectedImageProvider.maxReferenceImages
+  ) {
+    return NextResponse.json(
+      { error: `${selectedImageProvider.label} supports at most ${selectedImageProvider.maxReferenceImages} profile reference images.` },
+      { status: 400 }
+    )
+  }
 
   if (parentStoryId && !parentResult.data) {
     return NextResponse.json({ error: "Parent story not found" }, { status: 404 })
@@ -151,7 +187,7 @@ export async function POST(request: NextRequest) {
   const storyType = storyTypeResult.data as StoryTypeRow
 
   const profilesMissingIllustrations = profiles.filter(
-    p => !p.combined_reference_path && !p.character_illustration_path && !p.reference_image_path
+    p => !p.combined_reference_path && !p.character_illustration_path && !p.reference_image_path && !p.reference_image_url
   )
   if (profilesMissingIllustrations.length > 0) {
     const missingNames = profilesMissingIllustrations.map(p => p.name).join(", ")
@@ -159,6 +195,29 @@ export async function POST(request: NextRequest) {
       { error: `Character illustrations are not ready for: ${missingNames}. Please visit their profile to generate an illustration before creating a story.` },
       { status: 400 }
     )
+  }
+
+  let referenceImageUrls: string[] = []
+  let referenceImageLabels: string[] = []
+  if (imagesEnabled && selectedImageProvider.supportsReferenceImages) {
+    const signedReferenceUrlsByPath = await createSignedImageUrlsMap(
+      service,
+      getProfileReferencePaths(profiles)
+    )
+    const profileReferences = resolveProfileReferences(profiles, signedReferenceUrlsByPath)
+    const missingReferenceNames = profileReferences
+      .filter((ref) => !ref.url)
+      .map((ref) => ref.name)
+
+    if (missingReferenceNames.length > 0) {
+      return NextResponse.json(
+        { error: `Reference images could not be resolved for: ${missingReferenceNames.join(", ")}.` },
+        { status: 400 }
+      )
+    }
+
+    referenceImageUrls = profileReferences.map((ref) => ref.url!)
+    referenceImageLabels = profileReferences.map((ref) => `${ref.name}'s profile reference`)
   }
 
   // Determine version number
@@ -289,18 +348,8 @@ Each page must describe one clear visual moment — where the characters are, wh
 
         if (imagesEnabled) {
           const storyPages = splitStoryPages(fullText)
-          const signedReferenceUrlsByPath = await createSignedImageUrlsMap(
-            service,
-            profiles
-              .map((profile) => profile.reference_image_path)
-              .filter((path): path is string => Boolean(path))
-          )
-          const profilesForReference = profiles.map((profile) => ({
-            ...profile,
-            reference_image_url: profile.reference_image_path
-              ? signedReferenceUrlsByPath.get(profile.reference_image_path) ?? profile.reference_image_url
-              : profile.reference_image_url,
-          }))
+          const imageProvider = getImageProvider(imageProviderId)
+          const referencesAvailableForProvider = imageProvider.supportsReferenceImages && referenceImageUrls.length > 0
 
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
@@ -315,26 +364,30 @@ Each page must describe one clear visual moment — where the characters are, wh
             .filter((name): name is string => Boolean(name) && name !== "their favorite toy")
           const { result: visualContext } = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
 
-          characterAnchor = buildCharacterAnchor(profilesForReference, {})
+          characterAnchor = buildCharacterAnchor(profiles, visualContext.outfits)
 
-          const characterDetails: Record<string, { gender: string; age: number; toyName?: string; toyDescription?: string }> = {}
+          const characterDetails: Record<string, {
+            gender: string
+            age: number
+            appearanceDescription?: string
+            outfit?: string
+            toyName?: string
+            toyDescription?: string
+          }> = {}
           for (const p of profiles) {
+            const appearanceDescription = buildAppearanceDescription(p)
             characterDetails[p.name] = {
               gender: p.gender ?? "child",
               age: p.age,
+              ...(appearanceDescription ? { appearanceDescription } : {}),
+              ...(visualContext.outfits[p.name] ? { outfit: visualContext.outfits[p.name] } : {}),
               ...(p.toy?.name ? { toyName: p.toy.name } : {}),
               ...(p.toy?.description ? { toyDescription: p.toy.description } : {}),
             }
           }
 
-          send({ type: "status", message: "Applying art style…" })
-          const baseReferenceUrl = await generateGroupReferenceImage(profilesForReference, visualContext.outfits)
-          const referenceImageUrl = (baseReferenceUrl && artStyle?.prompt_prefix)
-            ? await applyArtStyleToReference(baseReferenceUrl, styleDescription)
-            : baseReferenceUrl
-
           // Fixed seed for the fallback FLUX/dev path so character features stay consistent
-          // across pages when no Kontext reference image is available
+          // across pages for providers that support seed control.
           const storySeed = Math.floor(Math.random() * 2147483647)
 
           send({ type: "status", message: `Generating ${lengthConfig.imageCount} images…` })
@@ -346,7 +399,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               scene: pageScene,
               visualContext,
               artStylePrefix: styleDescription,
-              referenceAvailable: !!referenceImageUrl,
+              referenceAvailable: referencesAvailableForProvider,
               characterDetails,
               storyCharacters: visualContext.storyCharacters,
             })
@@ -354,15 +407,16 @@ Each page must describe one clear visual moment — where the characters are, wh
 
           // Brief pause before the first image so the fal.ai rate limit window
           // can settle after any setup calls (style transfer, etc.)
-          await new Promise(r => setTimeout(r, 5000))
+          await new Promise(r => setTimeout(r, IMAGE_GENERATION_START_DELAY_MS))
 
           // Sequential generation avoids rate limits that cause concurrent requests
           // to exhaust retries and silently return null.
-          const imageProvider = getImageProvider(imageProviderId)
           const generatedResults: ImageResult[] = []
           for (let imgIdx = 0; imgIdx < pagePrompts.length; imgIdx++) {
             const result = await imageProvider.generateImage(pagePrompts[imgIdx], {
-              referenceImageUrl,
+              referenceImageUrl: referenceImageUrls[0],
+              referenceImageUrls,
+              referenceImageLabels,
               seed: storySeed,
             })
             generatedResults.push(result)
@@ -441,11 +495,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               image_prompts: pagePrompts.length > 0 ? pagePrompts : undefined,
               model: "claude-sonnet-4-6",
               image_provider: imagesEnabled ? imageProviderId : undefined,
-              image_model: imagesEnabled ? (
-                imageProviderId === "openai" ? "gpt-image-1" :
-                imageProviderId === "gemini" ? "imagen-3.0-generate-001" :
-                "fal-ai/flux/dev"
-              ) : "",
+              image_model: imagesEnabled ? getImageProvider(imageProviderId).modelId : "",
             },
             credits_used: creditsNeeded,
           })

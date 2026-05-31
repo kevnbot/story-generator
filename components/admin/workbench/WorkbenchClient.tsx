@@ -9,9 +9,30 @@ interface Profile {
   name: string
   age: number
   age_months: number
+  gender?: string | null
+  appearance?: {
+    hair?: string
+    hair_color?: string
+    hair_style?: string
+    eye_color?: string
+    skin_tone?: string
+    glasses?: boolean
+    freckles?: boolean
+    other?: string
+  } | null
+  personality_tags?: string[] | null
+  toy?: {
+    name: string
+    type?: string
+    color?: string
+    description?: string
+  } | null
   reference_image_path: string | null
+  reference_image_url?: string | null
   combined_reference_path: string | null
+  combined_reference_url?: string | null
   character_illustration_path: string | null
+  character_illustration_url?: string | null
   illustration_status?: string | null
 }
 

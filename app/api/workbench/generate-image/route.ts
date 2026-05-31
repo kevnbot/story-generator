@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const prompt = body?.prompt as string | undefined
   const referenceImageUrl = body?.referenceImageUrl as string | undefined
+  const referenceImageUrls = body?.referenceImageUrls as string[] | undefined
+  const referenceImageLabels = body?.referenceImageLabels as string[] | undefined
   const imageProvider = body?.imageProvider as string | undefined
   const pageIndex = body?.pageIndex as number | undefined
 
@@ -28,21 +30,33 @@ export async function POST(request: NextRequest) {
   if (pageIndex === undefined) return NextResponse.json({ error: "pageIndex required" }, { status: 400 })
 
   const provider = getImageProvider(imageProvider)
+  const resolvedReferenceUrls = [
+    ...(referenceImageUrls ?? []),
+    ...(referenceImageUrl ? [referenceImageUrl] : []),
+  ].filter((url, index, urls) => url.trim() && urls.indexOf(url) === index)
+
+  if (provider.supportsReferenceImages && resolvedReferenceUrls.length === 0) {
+    return NextResponse.json({ error: "referenceImageUrls required for selected image provider" }, { status: 400 })
+  }
+  if (provider.maxReferenceImages !== null && resolvedReferenceUrls.length > provider.maxReferenceImages) {
+    return NextResponse.json(
+      { error: `${provider.label} supports at most ${provider.maxReferenceImages} reference images.` },
+      { status: 400 }
+    )
+  }
 
   const startMs = Date.now()
   const result = await provider.generateImage(prompt, {
     referenceImageUrl: referenceImageUrl ?? undefined,
+    referenceImageUrls: referenceImageUrls ?? undefined,
+    referenceImageLabels: referenceImageLabels ?? undefined,
   })
   const durationMs = Date.now() - startMs
 
   const isErrorPlaceholder = result.url === null || result.isBlackImage
   const url = isErrorPlaceholder ? "/images/story-image-error.svg" : result.url
 
-  const model =
-    imageProvider === "openai" ? "gpt-image-1"
-    : imageProvider === "gemini" ? "imagen-3.0-generate-001"
-    : referenceImageUrl ? "fal-ai/flux-pro/kontext"
-    : "fal-ai/flux/dev"
+  const model = result.modelId ?? provider.modelId
 
   const attemptsLog: ImageAttemptLog[] = []
 
@@ -52,7 +66,7 @@ export async function POST(request: NextRequest) {
     isErrorPlaceholder,
     provider: provider.label,
     model,
-    referenceUsed: !!(referenceImageUrl && !isErrorPlaceholder),
+    referenceUsed: !!(provider.supportsReferenceImages && result.referenceImageCount && !isErrorPlaceholder),
     attempts: result.attempts,
     attemptsLog,
     isBlackImage: result.isBlackImage,

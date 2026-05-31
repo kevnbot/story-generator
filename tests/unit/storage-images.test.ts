@@ -52,6 +52,31 @@ describe("storage image helpers", () => {
     )
   })
 
+  it("copies a data URI image into storage", async () => {
+    const upload = vi.fn(async () => ({ error: null }))
+    const supabase = {
+      storage: {
+        from: vi.fn(() => ({
+          upload,
+        })),
+      },
+    } as unknown as Parameters<typeof copyRemoteImageToStoragePath>[0]["supabase"]
+
+    const sourceUrl = `data:image/png;base64,${Buffer.from([1, 2, 3, 4]).toString("base64")}`
+    const path = await copyRemoteImageToStoragePath({
+      supabase,
+      sourceUrl,
+      buildPath: (extension) => `some/path/file.${extension}`,
+    })
+
+    expect(path).toBe("some/path/file.png")
+    expect(upload).toHaveBeenCalledWith(
+      "some/path/file.png",
+      expect.any(ArrayBuffer),
+      expect.objectContaining({ contentType: "image/png", upsert: true })
+    )
+  })
+
   it("returns null when remote content is not an image", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("not an image", {

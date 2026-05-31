@@ -1,21 +1,11 @@
 import * as Sentry from "@sentry/nextjs"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { KidProfile, StoryImage, StoryImageForUi } from "@/types"
+import { readImageUrl } from "@/lib/image-data"
 
 export const GENERATED_IMAGES_BUCKET = process.env.SUPABASE_IMAGES_BUCKET ?? "generated-images"
 
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 60 * 20
-const DEFAULT_IMAGE_CONTENT_TYPE = "image/webp"
-
-const MIME_EXTENSION_MAP: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-  "image/avif": "avif",
-}
-
 function parseSignedUrlTtl(): number {
   const raw = process.env.SUPABASE_IMAGE_SIGNED_URL_TTL_SECONDS
   if (!raw) return DEFAULT_SIGNED_URL_TTL_SECONDS
@@ -26,40 +16,8 @@ function parseSignedUrlTtl(): number {
 
 export const IMAGE_SIGNED_URL_TTL_SECONDS = parseSignedUrlTtl()
 
-function normalizeContentType(contentType: string | null): string {
-  if (!contentType) return DEFAULT_IMAGE_CONTENT_TYPE
-  return contentType.split(";")[0].trim().toLowerCase()
-}
-
-function contentTypeToExtension(contentType: string): string {
-  return MIME_EXTENSION_MAP[contentType] ?? "webp"
-}
-
-function hasImageContentType(contentType: string): boolean {
-  return contentType.startsWith("image/")
-}
-
 async function fetchRemoteImage(sourceUrl: string): Promise<{ bytes: ArrayBuffer; contentType: string; extension: string }> {
-  const response = await fetch(sourceUrl)
-  if (!response.ok) {
-    throw new Error(`failed to fetch image: status ${response.status}`)
-  }
-
-  const contentType = normalizeContentType(response.headers.get("content-type"))
-  if (!hasImageContentType(contentType)) {
-    throw new Error(`invalid content type: ${contentType}`)
-  }
-
-  const bytes = await response.arrayBuffer()
-  if (bytes.byteLength === 0) {
-    throw new Error("empty image response")
-  }
-
-  return {
-    bytes,
-    contentType,
-    extension: contentTypeToExtension(contentType),
-  }
+  return readImageUrl(sourceUrl)
 }
 
 export function buildProfileReferenceImagePath(

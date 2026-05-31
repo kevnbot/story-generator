@@ -5,7 +5,12 @@ import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib/story-density"
-import { listImageProviders } from "@/lib/ai/providers/image/registry"
+import {
+  DEFAULT_IMAGE_PROVIDER_ID,
+  getImageProviderMetadata,
+  listImageProviderMetadata,
+  type ImageProviderMetadata,
+} from "@/lib/ai/providers/image/options"
 import { listTextProviders } from "@/lib/ai/providers/text/registry"
 import { formatAge } from "@/lib/ai/prompt-builder"
 import type { StoryVisualContext } from "@/lib/ai/prompt-builder/visual-context"
@@ -42,7 +47,9 @@ interface Profile {
   reference_image_path: string | null
   reference_image_url?: string | null
   combined_reference_path: string | null
+  combined_reference_url?: string | null
   character_illustration_path: string | null
+  character_illustration_url?: string | null
   illustration_status?: string | null
 }
 
@@ -134,6 +141,8 @@ interface GeneratedImageResult {
 
 interface BuildReferenceResult {
   profileRefs: { profileId: string; name: string; url: string | null; storageField: string }[]
+  referenceImageUrls: string[]
+  referenceImageLabels: string[]
   compositingSteps: {
     addedProfileName: string
     prompt: string
@@ -154,38 +163,6 @@ interface BuildReferenceResult {
   } | null
   styledReferenceUrl: string | null
 }
-
-// ─── Provider context ─────────────────────────────────────────────────────────
-
-const PROVIDER_CONTEXT = {
-  fal: {
-    model: "FLUX Kontext / FLUX Dev",
-    supportsReference: true,
-    supportsSeed: true,
-    contentFilterBehavior: "Silent black image on flag",
-    storageHandling: "Direct URL copy",
-    knownLimitations: "3+ character consistency may vary",
-    expectedTime: "15–30s per image",
-  },
-  openai: {
-    model: "gpt-image-1",
-    supportsReference: true,
-    supportsSeed: false,
-    contentFilterBehavior: "Error response on flag",
-    storageHandling: "Direct URL copy",
-    knownLimitations: "No seed control — character appearance varies between pages",
-    expectedTime: "10–20s per image",
-  },
-  gemini: {
-    model: "Imagen 3",
-    supportsReference: false,
-    supportsSeed: false,
-    contentFilterBehavior: "Error response on flag",
-    storageHandling: "Base64 — must convert before storage",
-    knownLimitations: "No reference image support — character anchor is text-only",
-    expectedTime: "10–15s per image",
-  },
-} as const
 
 // ─── Local page splitter (mirrors lib/ai/story.ts — safe to copy here) ───────
 
@@ -215,9 +192,16 @@ function splitPages(content: string): string[] {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getIllustrationStatus(profile: Profile): "ready" | "pending" | "missing" {
-  if (profile.combined_reference_path || profile.reference_image_path) return "ready"
+  if (profile.combined_reference_path || profile.character_illustration_path || profile.reference_image_path || profile.reference_image_url) return "ready"
   if (profile.illustration_status === "pending" || profile.illustration_status === "generating") return "pending"
   return "missing"
+}
+
+function getProfileReferencePreviewUrl(profile: Profile): string | null {
+  return profile.combined_reference_url
+    ?? profile.character_illustration_url
+    ?? profile.reference_image_url
+    ?? null
 }
 
 function getStorageField(profile: Profile): string {
@@ -235,6 +219,23 @@ function storageFieldBadge(field: string): { label: string; className: string } 
     case "reference_image_url": return { label: "URL", className: "bg-muted text-muted-foreground" }
     default: return { label: "none", className: "bg-red-100 text-red-700" }
   }
+}
+
+function getImageProviderDisabledReason(provider: ImageProviderMetadata, selectedProfileCount: number): string | null {
+  if (provider.referenceMode === "single" && selectedProfileCount > 1) {
+    return `${provider.label} supports only one selected profile.`
+  }
+  if (provider.maxReferenceImages !== null && selectedProfileCount > provider.maxReferenceImages) {
+    return `${provider.label} supports at most ${provider.maxReferenceImages} selected profiles.`
+  }
+  return null
+}
+
+function formatReferenceMode(provider: ImageProviderMetadata): string {
+  if (!provider.supportsReferenceImages || provider.referenceMode === "none") return "No reference images"
+  if (provider.referenceMode === "single") return "1 reference image"
+  if (provider.maxReferenceImages !== null) return `Up to ${provider.maxReferenceImages} reference images`
+  return "Multiple reference images"
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -288,6 +289,7 @@ function SelectionCard({
 function ProfileCard({ profile }: { profile: Profile }) {
   const app = profile.appearance ?? {}
   const hasAppearanceDetails = !!(app.hair || app.hair_color || app.eye_color || app.skin_tone)
+  const previewUrl = getProfileReferencePreviewUrl(profile)
 
   return (
     <div className="rounded-xl border bg-card p-4 space-y-3">
@@ -338,10 +340,10 @@ function ProfileCard({ profile }: { profile: Profile }) {
 
       <div>
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Reference Image</p>
-        {profile.reference_image_url ? (
+        {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={profile.reference_image_url}
+            src={previewUrl}
             alt={`${profile.name} reference`}
             className="w-24 h-24 rounded-lg object-cover"
           />
@@ -766,7 +768,7 @@ function Stage4Card({
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <span className="font-semibold text-sm">Stage 4 — Reference Image Builder</span>
+        <span className="font-semibold text-sm">Stage 4 — Reference Resolver</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium">
           ✓ complete
         </span>
@@ -775,7 +777,7 @@ function Stage4Card({
           onClick={onRerun}
           className="ml-auto text-[11px] text-muted-foreground hover:text-foreground rounded px-2 py-0.5 hover:bg-muted transition-colors"
         >
-          Re-run compositing
+          Re-run references
         </button>
       </div>
 
@@ -814,9 +816,11 @@ function Stage4Card({
 
         {/* 4b — Compositing Steps */}
         <div className="px-4 py-3 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4b — Compositing Steps</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4b — Composite Reference</p>
           {result.compositingSteps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Single profile — no compositing required</p>
+            <p className="text-sm text-muted-foreground">
+              No composite generated. Multi-reference providers receive the individual profile references above.
+            </p>
           ) : (
             result.compositingSteps.map((step, i) => (
               <CompositingStepRow key={i} step={step} />
@@ -852,7 +856,7 @@ function Stage4Card({
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No art style selected — skipped</p>
+            <p className="text-sm text-muted-foreground">Skipped — art style is applied in the page image prompts.</p>
           )}
         </div>
 
@@ -860,20 +864,16 @@ function Stage4Card({
         {finalUrl && (
           <div className="px-4 py-3 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Final reference image — used for all pages
+              First reference image
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Single-reference providers use this image. Multi-reference providers use all resolved profile references.
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={finalUrl} alt="Final reference image" className="w-full rounded-lg object-cover" />
           </div>
         )}
 
-        {/* Re-run style transfer (not yet implemented) */}
-        <div className="px-4 py-3">
-          <Button disabled variant="outline" size="sm" className="text-xs">
-            Re-run style transfer only
-            <span className="ml-2 text-muted-foreground">coming soon</span>
-          </Button>
-        </div>
       </div>
     </div>
   )
@@ -1145,7 +1145,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [extraInput, setExtraInput] = useState("")
   const [artStyleId, setArtStyleId] = useState<string>(artStyles[0]?.id ?? "")
   const [textProvider, setTextProvider] = useState("anthropic")
-  const [imageProvider, setImageProvider] = useState("fal")
+  const [imageProvider, setImageProvider] = useState(DEFAULT_IMAGE_PROVIDER_ID)
   const [includeImages, setIncludeImages] = useState(true)
 
   // Stage 1
@@ -1186,13 +1186,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const textProviders = listTextProviders()
-  const imageProviders = listImageProviders()
+  const imageProviders = listImageProviderMetadata()
   const selectedStoryType = storyTypes.find(t => t.id === storyTypeId) ?? null
   const showExtraInput = selectedStoryType
     ? (selectedStoryType.occasion_required === true || selectedStoryType.extra_input_label !== null)
     : false
   const selectedProfiles = profiles.filter(p => selectedProfileIds.includes(p.id))
-  const providerCtx = PROVIDER_CONTEXT[imageProvider as keyof typeof PROVIDER_CONTEXT] ?? null
+  const providerCtx = getImageProviderMetadata(imageProvider)
   const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading
   const canGenerateText = !!promptsResult && !textLoading && !promptsLoading
   const canExtractVisual = storyPages.length > 0 && !visualLoading && !textLoading
@@ -1201,9 +1201,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const canSaveStory = !!textResult && !saveLoading && (!includeImages || !!generatedImages)
 
   function toggleProfile(id: string) {
-    setSelectedProfileIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    )
+    const next = selectedProfileIds.includes(id)
+      ? selectedProfileIds.filter(x => x !== id)
+      : [...selectedProfileIds, id]
+    setSelectedProfileIds(next)
+    if (getImageProviderDisabledReason(getImageProviderMetadata(imageProvider), next.length)) {
+      setImageProvider(DEFAULT_IMAGE_PROVIDER_ID)
+    }
   }
 
   function reset() {
@@ -1233,6 +1237,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
 
   async function triggerBuildImagePrompts(vc: StoryVisualContext, rr: BuildReferenceResult) {
     setImagePrompts(null)
+    const referencesAvailable = providerCtx.supportsReferenceImages && rr.referenceImageUrls.length > 0
     try {
       const res = await fetch("/api/workbench/build-image-prompts", {
         method: "POST",
@@ -1241,7 +1246,9 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
           visualContext: vc,
           artStyleId,
           profileIds: selectedProfileIds,
-          referenceAvailable: !!(rr.styledReferenceUrl ?? rr.baseReferenceUrl),
+          referenceAvailable: referencesAvailable,
+          imageProvider,
+          referenceImageLabels: rr.referenceImageLabels,
         }),
       })
       const data = await res.json()
@@ -1422,7 +1429,9 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
     setImagesLoading(true)
     setImagesProgress(0)
     setImagesError(null)
-    const referenceUrl = referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    const referenceImageUrls = referenceResult?.referenceImageUrls ?? []
+    const referenceImageLabels = referenceResult?.referenceImageLabels ?? []
+    const referenceUrl = referenceImageUrls[0] ?? referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
     const results: GeneratedImageResult[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
@@ -1433,6 +1442,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
           body: JSON.stringify({
             prompt: imagePrompts[i],
             referenceImageUrl: referenceUrl,
+            referenceImageUrls,
+            referenceImageLabels,
             imageProvider,
             pageIndex: i,
           }),
@@ -1464,12 +1475,21 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
 
   async function rerunImage(pageIndex: number) {
     if (!imagePrompts?.[pageIndex] || !generatedImages) return
-    const referenceUrl = referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    const referenceImageUrls = referenceResult?.referenceImageUrls ?? []
+    const referenceImageLabels = referenceResult?.referenceImageLabels ?? []
+    const referenceUrl = referenceImageUrls[0] ?? referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
     try {
       const res = await fetch("/api/workbench/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: imagePrompts[pageIndex], referenceImageUrl: referenceUrl, imageProvider, pageIndex }),
+        body: JSON.stringify({
+          prompt: imagePrompts[pageIndex],
+          referenceImageUrl: referenceUrl,
+          referenceImageUrls,
+          referenceImageLabels,
+          imageProvider,
+          pageIndex,
+        }),
       })
       const data = await res.json()
       const updated = [...generatedImages]
@@ -1507,6 +1527,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       text_density: textDensity,
       model: textResult.model,
       image_provider: includeImages ? imageProvider : undefined,
+      image_model: includeImages ? providerCtx.modelId : undefined,
       workbench: true,
     }
     try {
@@ -1699,19 +1720,40 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
         <div className="space-y-2">
           <SectionLabel>Image Provider</SectionLabel>
           <div className="space-y-1">
-            {imageProviders.map(p => (
-              <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+            {imageProviders.map(p => {
+              const disabledReason = getImageProviderDisabledReason(p, selectedProfileIds.length)
+              const disabled = disabledReason !== null
+              return (
+              <label
+                key={p.id}
+                className={`flex items-start gap-2 rounded-md px-1 py-0.5 ${
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                }`}
+                title={disabledReason ?? undefined}
+              >
                 <input
                   type="radio"
                   name="image-provider"
                   value={p.id}
                   checked={imageProvider === p.id}
-                  onChange={() => setImageProvider(p.id)}
+                  disabled={disabled}
+                  onChange={() => !disabled && setImageProvider(p.id)}
+                  className="mt-0.5"
                 />
-                <span className="text-sm">{p.label}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm">{p.label}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {formatReferenceMode(p)}
+                  </span>
+                </span>
               </label>
-            ))}
+            )})}
           </div>
+          {selectedProfileIds.length > 0 && imageProviders.some(p => getImageProviderDisabledReason(p, selectedProfileIds.length)) && (
+            <p className="text-xs text-muted-foreground">
+              Some providers are unavailable for the current profile count.
+            </p>
+          )}
         </div>
 
         {/* 10. Provider Context Panel */}
@@ -1722,9 +1764,10 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
               <tbody>
                 {(
                   [
-                    ["Model", providerCtx.model],
-                    ["Ref images", providerCtx.supportsReference ? "Yes" : "No"],
-                    ["Seed control", providerCtx.supportsSeed ? "Yes" : "No"],
+                    ["Model", providerCtx.modelId],
+                    ["Ref images", formatReferenceMode(providerCtx)],
+                    ["Ref max", providerCtx.maxReferenceImages === null ? "Not stated" : String(providerCtx.maxReferenceImages)],
+                    ["Seed control", providerCtx.supportsSeedControl ? "Yes" : "No"],
                     ["Content filter", providerCtx.contentFilterBehavior],
                     ["Storage", providerCtx.storageHandling],
                     ["Est. time", providerCtx.expectedTime],
@@ -1857,13 +1900,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
               <p>
                 {"Reference images: "}
                 {selectedProfiles
-                  .map(p => `${p.name} ${p.reference_image_url || p.reference_image_path ? "✓" : "✗"}`)
+                  .map(p => `${p.name} ${getProfileReferencePreviewUrl(p) || p.reference_image_path || p.character_illustration_path || p.combined_reference_path ? "✓" : "✗"}`)
                   .join(", ")}
               </p>
               <p>
                 {"Combined reference available: "}
                 {selectedProfiles.some(p => p.combined_reference_path)
-                  ? "Yes — will composite at Stage 4"
+                  ? "Yes"
                   : "No"}
               </p>
             </div>
@@ -1960,7 +2003,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
             {/* Reference loading */}
             {referenceLoading && (
               <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-                Building reference image…
+                Resolving reference images…
               </div>
             )}
 
@@ -1980,10 +2023,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                 <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
                   <p className="font-semibold mb-2">→ Passing to image generator:</p>
                   <p>
-                    {"Reference image: "}
-                    {(referenceResult.styledReferenceUrl ?? referenceResult.baseReferenceUrl)
-                      ? "✓ set"
-                      : "✗ missing"}
+                    {"Reference images: "}
+                    {referenceResult.referenceImageUrls.length}
                   </p>
                   {referenceResult.profileRefs.filter(r => r.url).map(r => (
                     <p key={r.profileId}>{r.name} ✓</p>
@@ -1991,9 +2032,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                   <p>Provider: {imageProviders.find(p => p.id === imageProvider)?.label ?? imageProvider}</p>
                   <p>
                     {"Provider supports reference images: "}
-                    {providerCtx?.supportsReference
+                    {providerCtx.supportsReferenceImages
                       ? "✓ Yes"
-                      : "✗ No — images will use text descriptions only"}
+                      : "✗ No - images will use text descriptions only"}
+                  </p>
+                  <p>
+                    {"Reference mode: "}
+                    {providerCtx.referenceMode}
                   </p>
                 </div>
               </>

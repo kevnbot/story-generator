@@ -15,6 +15,8 @@ export function buildStoryPagePrompt(input: {
     [name: string]: {
       gender: string
       age: number
+      appearanceDescription?: string
+      outfit?: string
       toyName?: string
       toyDescription?: string
     }
@@ -47,7 +49,8 @@ export function buildStoryPagePrompt(input: {
     let line = `${name} — ${humanGender}, age ${detail.age}`
 
     if (!referenceAvailable) {
-      const outfit = visualContext.outfits[name]
+      if (detail.appearanceDescription) line += `, ${detail.appearanceDescription}`
+      const outfit = detail.outfit ?? visualContext.outfits[name]
       if (outfit) line += `, ${outfit}`
     }
 
@@ -76,7 +79,7 @@ export function buildStoryPagePrompt(input: {
   if (scene.mood) parts.push(`Mood: ${scene.mood}.`)
 
   if (referenceAvailable) {
-    parts.push("Profile character appearances are defined by the reference image — do not alter them.")
+    parts.push("Profile character appearances are defined by the reference images — do not alter them.")
   }
 
   parts.push("All characters are human. Any toy is a separate physical object — never part of a character's body.")

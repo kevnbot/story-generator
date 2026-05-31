@@ -1,14 +1,14 @@
 import * as Sentry from "@sentry/nextjs"
-import { NEGATIVE_PROMPT } from "@/lib/ai/image-prompt"
+import { IMAGE_PROVIDER_METADATA, type ImageProviderId, type ImageProviderMetadata } from "./options"
 import type { ImageProvider, ImageGenerationOptions, ImageResult } from "./types"
+import {
+  ASPECT_RATIO_MAP,
+  detectBlackImage,
+  resolveReferenceImageUrls,
+  validateReferenceCount,
+} from "./utils"
 
-type ImageSize = NonNullable<ImageGenerationOptions["size"]>
-
-const FAL_SIZE_MAP: Record<ImageSize, string> = {
-  landscape_4_3: "landscape_4_3",
-  portrait_4_3:  "portrait_4_3",
-  square:        "square_hd",
-}
+type FalProviderId = Extract<ImageProviderId, "fal-kontext" | "fal-kontext-multi" | "fal-nano-banana-2" | "fal-kling-o1">
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
@@ -68,116 +68,213 @@ function extractUrl(data: Record<string, unknown> | null): string | null {
   return (data as { images?: { url: string }[] } | null)?.images?.[0]?.url ?? null
 }
 
-// ─── Black image detection ────────────────────────────────────────────────────
+// ─── Reference helpers ────────────────────────────────────────────────────────
 
-// Fetches image headers and checks content-length.
-// Returns true if the image is suspiciously small (likely all-black output).
-// A missing content-length header is treated as OK (chunked / CDN streaming).
-async function detectBlackImage(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: "HEAD" })
-    const cl = res.headers.get("content-length")
-    if (cl !== null && parseInt(cl, 10) < 5000) return true
-  } catch {
-    // Network error on HEAD — don't flag as black image
+export function buildKlingReferencePrompt(prompt: string, labels: string[]): string {
+  if (labels.length === 0 || /@Image(?:\d+)?/.test(prompt)) return prompt
+
+  const referenceLines = labels.map((label, index) => {
+    const imageToken = labels.length === 1 ? "@Image" : `@Image${index + 1}`
+    return `${imageToken} is ${label}.`
+  })
+
+  return [
+    referenceLines.join(" "),
+    "Preserve each referenced person's identity and use the matching reference image for their appearance.",
+    prompt,
+  ].join(" ")
+}
+
+function validateReferences(
+  metadata: ImageProviderMetadata,
+  referenceUrls: string[],
+): string | null {
+  return validateReferenceCount(metadata, referenceUrls, { requireAtLeastOne: true })
+}
+
+export function buildFalRequest(
+  providerId: FalProviderId,
+  prompt: string,
+  options: ImageGenerationOptions = {},
+): { model: string; body: Record<string, unknown>; referenceImageCount: number } | { error: string; referenceImageCount: number } {
+  const metadata = IMAGE_PROVIDER_METADATA[providerId]
+  const referenceUrls = resolveReferenceImageUrls(options)
+  const referenceError = validateReferences(metadata, referenceUrls)
+  if (referenceError) return { error: referenceError, referenceImageCount: referenceUrls.length }
+
+  const size = options.size ?? "landscape_4_3"
+  const aspectRatio = ASPECT_RATIO_MAP[size]
+
+  if (providerId === "fal-kontext") {
+    return {
+      model: metadata.modelId,
+      referenceImageCount: referenceUrls.length,
+      body: {
+        prompt,
+        image_url: referenceUrls[0],
+        guidance_scale: 3.5,
+        num_images: 1,
+        output_format: "jpeg",
+        safety_tolerance: "2",
+        enhance_prompt: false,
+        aspect_ratio: aspectRatio,
+        ...(options.seed !== undefined ? { seed: options.seed } : {}),
+      },
+    }
   }
-  return false
+
+  if (providerId === "fal-kontext-multi") {
+    return {
+      model: metadata.modelId,
+      referenceImageCount: referenceUrls.length,
+      body: {
+        prompt,
+        image_urls: referenceUrls,
+        guidance_scale: 3.5,
+        num_images: 1,
+        output_format: "jpeg",
+        safety_tolerance: "2",
+        enhance_prompt: false,
+        aspect_ratio: aspectRatio,
+        ...(options.seed !== undefined ? { seed: options.seed } : {}),
+      },
+    }
+  }
+
+  if (providerId === "fal-nano-banana-2") {
+    return {
+      model: metadata.modelId,
+      referenceImageCount: referenceUrls.length,
+      body: {
+        prompt,
+        image_urls: referenceUrls,
+        num_images: 1,
+        aspect_ratio: aspectRatio,
+        output_format: "png",
+        safety_tolerance: "4",
+        sync_mode: false,
+        resolution: "1K",
+        limit_generations: true,
+        ...(options.seed !== undefined ? { seed: options.seed } : {}),
+      },
+    }
+  }
+
+  const labels = options.referenceImageLabels?.filter((label) => label.trim()) ?? []
+  const promptWithRefs = buildKlingReferencePrompt(prompt, labels.slice(0, referenceUrls.length))
+
+  return {
+    model: metadata.modelId,
+    referenceImageCount: referenceUrls.length,
+    body: {
+      prompt: promptWithRefs,
+      image_urls: referenceUrls,
+      resolution: "1K",
+      num_images: 1,
+      aspect_ratio: aspectRatio,
+      output_format: "png",
+      sync_mode: false,
+    },
+  }
 }
 
 // ─── Single generation attempt ────────────────────────────────────────────────
 
-// One full try: Kontext if a reference image is available, FLUX/dev otherwise.
 async function singleAttempt(
+  providerId: FalProviderId,
   prompt: string,
   options: ImageGenerationOptions,
-): Promise<{ url: string | null; error: string | null }> {
-  const {
-    referenceImageUrl,
-    seed,
-    size = "landscape_4_3",
-    negativePrompt = NEGATIVE_PROMPT,
-  } = options
-  const falSize = FAL_SIZE_MAP[size]
-
-  if (referenceImageUrl) {
-    const { ok, data, errorText } = await falPostWithRetry("fal-ai/flux-pro/kontext", {
-      prompt,
-      negative_prompt: negativePrompt,
-      image_url: referenceImageUrl,
-      image_size: falSize,
-      num_inference_steps: 28,
-      guidance_scale: 7.5,
-      num_images: 1,
-    })
-    if (ok) {
-      const url = extractUrl(data)
-      if (url) return { url, error: null }
+): Promise<{ url: string | null; error: string | null; modelId: string; referenceImageCount: number }> {
+  const request = buildFalRequest(providerId, prompt, options)
+  if ("error" in request) {
+    return {
+      url: null,
+      error: request.error,
+      modelId: IMAGE_PROVIDER_METADATA[providerId].modelId,
+      referenceImageCount: request.referenceImageCount,
     }
-    Sentry.logger.warn("fal.ai Kontext generation failed; falling back to FLUX/dev", {
-      provider: "fal",
-      model: "fal-ai/flux-pro/kontext",
-      error: errorText.slice(0, 500),
-    })
   }
 
-  const { ok, data, errorText } = await falPostWithRetry("fal-ai/flux/dev", {
-    prompt,
-    negative_prompt: negativePrompt,
-    image_size: falSize,
-    num_inference_steps: 28,
-    guidance_scale: 7.0,
-    num_images: 1,
-    ...(seed !== undefined ? { seed } : {}),
-  })
-
+  const { ok, data, errorText } = await falPostWithRetry(request.model, request.body)
   if (!ok) {
-    Sentry.logger.error("fal.ai FLUX/dev generation failed", {
-      provider: "fal",
-      model: "fal-ai/flux/dev",
+    Sentry.logger.error("fal.ai image generation failed", {
+      provider: providerId,
+      model: request.model,
       error: errorText.slice(0, 500),
     })
-    return { url: null, error: errorText }
+    return { url: null, error: errorText, modelId: request.model, referenceImageCount: request.referenceImageCount }
   }
 
-  return { url: extractUrl(data), error: null }
+  return {
+    url: extractUrl(data),
+    error: null,
+    modelId: request.model,
+    referenceImageCount: request.referenceImageCount,
+  }
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 const RETRY_DELAYS_MS = [2000, 4000]
 
-export const falProvider: ImageProvider = {
-  id: "fal",
-  label: "fal.ai",
-  supportsReferenceImages: true,
+function createFalProvider(providerId: FalProviderId): ImageProvider {
+  const metadata = IMAGE_PROVIDER_METADATA[providerId]
 
-  async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageResult> {
-    if (!process.env.FAL_KEY) {
-      Sentry.logger.warn("fal.ai key missing; skipping image generation", { provider: "fal" })
-      return { url: null, error: "FAL_KEY not configured", isBlackImage: false, attempts: 0 }
-    }
+  return {
+    ...metadata,
 
-    let lastResult: ImageResult = { url: null, error: null, isBlackImage: false, attempts: 0 }
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { url, error } = await singleAttempt(prompt, options)
-      const isBlackImage = url !== null ? await detectBlackImage(url) : false
-      lastResult = { url, error, isBlackImage, attempts: attempt }
-
-      if (url && !isBlackImage) return lastResult
-
-      if (attempt < 3) {
-        const delay = RETRY_DELAYS_MS[attempt - 1]
-        Sentry.logger.warn("fal.ai image result retry scheduled", {
-          provider: "fal",
-          attempt,
-          reason: url === null ? "null_url" : "black_image",
-          retry_delay_ms: delay,
-        })
-        await sleep(delay)
+    async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageResult> {
+      const referenceImageCount = resolveReferenceImageUrls(options).length
+      if (!process.env.FAL_KEY) {
+        Sentry.logger.warn("fal.ai key missing; skipping image generation", { provider: providerId })
+        return {
+          url: null,
+          error: "FAL_KEY not configured",
+          isBlackImage: false,
+          attempts: 0,
+          modelId: metadata.modelId,
+          referenceImageCount,
+        }
       }
-    }
 
-    return lastResult
-  },
+      let lastResult: ImageResult = {
+        url: null,
+        error: null,
+        isBlackImage: false,
+        attempts: 0,
+        modelId: metadata.modelId,
+        referenceImageCount,
+      }
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { url, error, modelId, referenceImageCount: refsUsed } = await singleAttempt(providerId, prompt, options)
+        const isBlackImage = url !== null ? await detectBlackImage(url) : false
+        lastResult = { url, error, isBlackImage, attempts: attempt, modelId, referenceImageCount: refsUsed }
+
+        if (url && !isBlackImage) return lastResult
+
+        if (attempt < 3) {
+          const delay = RETRY_DELAYS_MS[attempt - 1]
+          Sentry.logger.warn("fal.ai image result retry scheduled", {
+            provider: providerId,
+            attempt,
+            reason: url === null ? "null_url" : "black_image",
+            retry_delay_ms: delay,
+          })
+          await sleep(delay)
+        }
+      }
+
+      return lastResult
+    },
+  }
 }
+
+export const falKontextProvider = createFalProvider("fal-kontext")
+export const falKontextMultiProvider = createFalProvider("fal-kontext-multi")
+export const falNanoBanana2Provider = createFalProvider("fal-nano-banana-2")
+export const falKlingO1Provider = createFalProvider("fal-kling-o1")
+
+// Compatibility export for older internal imports. New code should use the
+// model-level provider ids exposed by the registry.
+export const falProvider = falKontextMultiProvider
