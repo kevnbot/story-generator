@@ -35,5 +35,5 @@ test("story generator shows mocked API errors", async ({ page }) => {
   await page.goto("/test-harness/generate")
   await page.getByRole("button", { name: "✦ Grant my wishes" }).click()
 
-  await expect(page.getByText("Not enough wishes")).toBeVisible()
+  await expect(page.getByText("Insufficient credits")).toBeVisible()
 })
