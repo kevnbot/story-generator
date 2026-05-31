@@ -40,8 +40,8 @@ describe("StoryGenerator", () => {
 
     await user.click(screen.getByRole("switch", { name: "Include images" }))
 
-    expect(screen.getByText("Not enough credits. You have 1.")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Generate Story" })).toBeDisabled()
+    expect(screen.getByText("Not enough wishes. You need 2 but have 1.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "✦ Grant my wishes" })).toBeDisabled()
   })
 
   it("sends selected values and handles a successful streamed response", async () => {
@@ -59,7 +59,7 @@ describe("StoryGenerator", () => {
     await user.click(screen.getByRole("button", { name: /Medium/ }))
     await user.type(screen.getByLabelText(/Title/), "Rocket Bedtime")
     await user.type(screen.getByLabelText("What should the story be about?"), "a rocket bedtime race")
-    await user.click(screen.getByRole("button", { name: "Generate Story" }))
+    await user.click(screen.getByRole("button", { name: "✦ Grant my wishes" }))
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Rocket Bedtime" })).toBeInTheDocument())
 
@@ -91,7 +91,7 @@ describe("StoryGenerator", () => {
 
     render(<StoryGenerator profiles={profiles} artStyles={artStyles} storyTypes={storyTypes} credits={8} imagesAvailable={false} />)
 
-    await user.click(screen.getByRole("button", { name: "Generate Story" }))
+    await user.click(screen.getByRole("button", { name: "✦ Grant my wishes" }))
 
     expect(await screen.findByText("Insufficient credits")).toBeInTheDocument()
   })

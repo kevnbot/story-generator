@@ -53,6 +53,17 @@ type StreamChunk =
   | { type: "done"; storyId: string | null; title: string; hasImages: boolean }
   | { type: "error"; message: string }
 
+const STORY_TYPE_EMOJI: Record<string, string> = {
+  bedtime: "🌙",
+  fairytale: "✨",
+  adventure: "🗺️",
+  silly: "😄",
+  mystery: "🔍",
+  special_event: "🎉",
+  educational: "📚",
+  custom: "🎨",
+}
+
 export function StoryGenerator({
   profiles,
   artStyles,
@@ -218,20 +229,19 @@ export function StoryGenerator({
       : `${selectedIds.size} kids`
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">
-          {parentStoryId ? "New Version" : "Generate a Story"}
+    <div style={{ maxWidth: "480px", margin: "0 auto", paddingBottom: "8px" }}>
+
+      {/* Page header */}
+      <div className="mb-6">
+        <p className="text-sm" style={{ color: "#a78bfa" }}>
+          {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"} ✦
+        </p>
+        <h1 className="text-xl font-semibold mt-0.5" style={{ color: "#2e1065" }}>
+          What&apos;s your wish tonight?
         </h1>
-        {parentStoryId && parentStoryTitle ? (
-          <p className="text-muted-foreground text-sm mt-1">
-            Creating a new version of &ldquo;{parentStoryTitle}&rdquo;
-          </p>
-        ) : (
-          <p className="text-muted-foreground text-sm mt-1">
-            {credits} credit{credits !== 1 ? "s" : ""} remaining
-          </p>
-        )}
+        <p className="text-sm mt-0.5" style={{ color: "#a78bfa" }}>
+          Your genie is ready to make magic
+        </p>
       </div>
 
       {/* Loading state */}
@@ -309,16 +319,24 @@ export function StoryGenerator({
 
       {/* Form — hidden while generating or done */}
       {status === "idle" && (
-        <div className="rounded-xl border bg-card p-6 space-y-5">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
 
-          {/* Profile selector */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">
-                {FEATURES.multiProfile ? "Select characters for your story" : "Select a character for your story"}
-              </label>
+          {/* Revision mode banner */}
+          {parentStoryTitle && (
+            <div style={{ backgroundColor: "#f5f0ff", border: "1.5px solid #e9d5ff", borderRadius: "12px", padding: "12px 14px" }}>
+              <p className="text-sm font-medium" style={{ color: "#6d28d9" }}>Revising: {parentStoryTitle}</p>
+              <p className="text-xs mt-0.5" style={{ color: "#a78bfa" }}>Your genie will craft a new version with your changes.</p>
+            </div>
+          )}
+
+          {/* Character selector */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", margin: 0 }}>
+                {FEATURES.multiProfile ? "Characters" : "Character"}
+              </p>
               {profiles.length > 1 && (
-                <span className="text-xs text-muted-foreground">{selectionLabel} selected</span>
+                <span className="text-xs text-muted-foreground">{selectionLabel}</span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -332,21 +350,34 @@ export function StoryGenerator({
                     onClick={() => toggleProfile(p.id)}
                     disabled={isDisabled}
                     title={isDisabled ? "Illustration needed — visit profile" : undefined}
-                    className={`p-3 rounded-lg border text-left transition-colors relative ${
-                      isDisabled
-                        ? "border-input bg-muted opacity-50 cursor-not-allowed"
-                        : isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-input bg-background hover:bg-accent"
-                    }`}
+                    style={{
+                      position: "relative",
+                      backgroundColor: isSelected ? "#f5f0ff" : "#ffffff",
+                      border: isSelected ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
+                      borderRadius: "11px",
+                      padding: "9px 11px",
+                      textAlign: "left",
+                      ...(isDisabled ? { opacity: 0.45, cursor: "not-allowed" } : {}),
+                    }}
                   >
                     {!isDisabled && profiles.length > 1 && (
                       <span
-                        className={`absolute top-2 right-2 w-4 h-4 rounded-sm border flex items-center justify-center text-[10px] font-bold transition-colors ${
-                          isSelected
-                            ? "bg-primary border-primary text-primary-foreground"
-                            : "border-input"
-                        }`}
+                        style={{
+                          position: "absolute",
+                          top: "8px",
+                          right: "8px",
+                          width: "16px",
+                          height: "16px",
+                          borderRadius: "4px",
+                          border: isSelected ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
+                          backgroundColor: isSelected ? "#7c3aed" : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "10px",
+                          fontWeight: "bold",
+                          color: "#ffffff",
+                        }}
                       >
                         {isSelected ? "✓" : ""}
                       </span>
@@ -361,7 +392,7 @@ export function StoryGenerator({
               })}
             </div>
             {FEATURES.multiProfile && profiles.length > 1 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground mt-2">
                 Select multiple kids to have them all appear in the story together.
               </p>
             )}
@@ -369,8 +400,10 @@ export function StoryGenerator({
 
           {/* Story type selector */}
           {storyTypes.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Story type</label>
+            <div>
+              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
+                Story type
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 {storyTypes.map(type => (
                   <button
@@ -380,13 +413,15 @@ export function StoryGenerator({
                       setStoryTypeId(type.id)
                       setStoryTypeExtraInput("")
                     }}
-                    className={`p-3 rounded-lg border text-left transition-colors ${
-                      storyTypeId === type.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-input bg-background hover:bg-accent"
-                    }`}
+                    style={{
+                      backgroundColor: storyTypeId === type.id ? "#f5f0ff" : "#ffffff",
+                      border: storyTypeId === type.id ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
+                      borderRadius: "10px",
+                      padding: "10px 12px",
+                      textAlign: "left",
+                    }}
                   >
-                    <div className="font-medium text-sm">{type.name}</div>
+                    <div className="font-medium text-sm">{STORY_TYPE_EMOJI[type.id] ?? "📖"} {type.name}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{type.description}</div>
                   </button>
                 ))}
@@ -396,7 +431,7 @@ export function StoryGenerator({
 
           {/* Conditional extra input for story types that require it */}
           {selectedStoryType?.extra_input_label && (
-            <div className="space-y-1.5">
+            <div>
               <Label htmlFor="story-type-extra">{selectedStoryType.extra_input_label}</Label>
               <Input
                 id="story-type-extra"
@@ -408,7 +443,7 @@ export function StoryGenerator({
           )}
 
           {/* Title */}
-          <div className="space-y-1.5">
+          <div>
             <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <Input
               id="custom-title"
@@ -419,49 +454,68 @@ export function StoryGenerator({
           </div>
 
           {/* Story length */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Story length</label>
-            <div className="grid grid-cols-3 gap-2">
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
+              Story length
+            </p>
+            <div className="flex flex-wrap gap-2">
               {(Object.entries(STORY_LENGTHS) as [StoryLength, typeof STORY_LENGTHS[StoryLength]][]).map(([key, cfg]) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setStoryLength(key)}
-                  className={`p-3 rounded-lg border text-left transition-colors ${
-                    storyLength === key
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-input bg-background hover:bg-accent"
-                  }`}
+                  style={storyLength === key ? {
+                    backgroundColor: "#7c3aed",
+                    color: "#ffffff",
+                    border: "1.5px solid #7c3aed",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                  } : {
+                    backgroundColor: "#ffffff",
+                    color: "#7c3aed",
+                    border: "1.5px solid #e9d5ff",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                  }}
                 >
-                  <div className="font-medium text-sm">{cfg.label}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {cfg.pages} pages · {cfg.imageCount} images
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    +{cfg.imageCost} image credit{cfg.imageCost !== 1 ? "s" : ""}
-                  </div>
+                  {cfg.label}
                 </button>
               ))}
             </div>
           </div>
 
           {/* Text density */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Text per page</label>
-            <div className="grid grid-cols-3 gap-2">
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
+              Reading style
+            </p>
+            <div className="flex flex-wrap gap-2">
               {(Object.values(TEXT_DENSITIES) as TextDensity[]).map(density => (
                 <button
                   key={density.id}
                   type="button"
                   onClick={() => setTextDensity(density.id)}
-                  className={`p-3 rounded-lg border text-left transition-colors ${
-                    textDensity === density.id
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-input bg-background hover:bg-accent"
-                  }`}
+                  style={textDensity === density.id ? {
+                    backgroundColor: "#7c3aed",
+                    color: "#ffffff",
+                    border: "1.5px solid #7c3aed",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                  } : {
+                    backgroundColor: "#ffffff",
+                    color: "#7c3aed",
+                    border: "1.5px solid #e9d5ff",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                  }}
                 >
-                  <div className="font-medium text-sm">{density.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{density.description}</div>
+                  {density.name}
                 </button>
               ))}
             </div>
@@ -469,19 +523,32 @@ export function StoryGenerator({
 
           {/* Art style */}
           {artStyles.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Art style</label>
+            <div>
+              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
+                Art style
+              </p>
               <div className="flex flex-wrap gap-2">
                 {artStyles.map(style => (
                   <button
                     key={style.id}
                     type="button"
                     onClick={() => setArtStyleId(style.id)}
-                    className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
-                      artStyleId === style.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary font-medium"
-                        : "border-input bg-background hover:bg-accent"
-                    }`}
+                    style={artStyleId === style.id ? {
+                      backgroundColor: "#7c3aed",
+                      color: "#ffffff",
+                      border: "1.5px solid #7c3aed",
+                      borderRadius: "20px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                    } : {
+                      backgroundColor: "#ffffff",
+                      color: "#7c3aed",
+                      border: "1.5px solid #e9d5ff",
+                      borderRadius: "20px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                    }}
                   >
                     {style.name}
                   </button>
@@ -490,22 +557,35 @@ export function StoryGenerator({
             </div>
           )}
 
-          {/* Story description */}
-          <div className="space-y-1.5">
-            <Label htmlFor="story-description">What should the story be about?</Label>
+          {/* Story idea */}
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
+              Your story idea
+            </p>
             <textarea
               id="story-description"
+              aria-label="What should the story be about?"
               rows={3}
               placeholder="e.g. going to the dentist for the first time, a dragon who is afraid of the dark, finding a secret door in the garden…"
               value={storyDescription}
               onChange={e => setStoryDescription(e.target.value)}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              style={{
+                width: "100%",
+                borderRadius: "12px",
+                border: "1.5px solid #e9d5ff",
+                padding: "12px",
+                fontSize: "14px",
+                backgroundColor: "#ffffff",
+                color: "#2e1065",
+                resize: "vertical",
+                outline: "none",
+              }}
             />
           </div>
 
           {/* Feedback — only shown when creating a version */}
           {parentStoryId && (
-            <div className="space-y-1.5">
+            <div>
               <Label htmlFor="feedback">Changes or feedback <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <textarea
                 id="feedback"
@@ -513,7 +593,17 @@ export function StoryGenerator({
                 placeholder="Leave blank to generate a fresh version, or describe what you'd like changed..."
                 value={feedback}
                 onChange={e => setFeedback(e.target.value)}
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                style={{
+                  width: "100%",
+                  borderRadius: "12px",
+                  border: "1.5px solid #e9d5ff",
+                  padding: "12px",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  color: "#2e1065",
+                  resize: "vertical",
+                  outline: "none",
+                }}
               />
             </div>
           )}
@@ -547,26 +637,39 @@ export function StoryGenerator({
             </button>
           </div>
 
-          {/* Cost + generate */}
-          <div className="space-y-3 pt-1 border-t">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Cost</span>
-              <span className="font-medium">{creditsNeeded} credit{creditsNeeded !== 1 ? "s" : ""}</span>
-            </div>
-            {credits < creditsNeeded && (
-              <p className="text-sm text-destructive">
-                Not enough credits. You have {credits}.
-              </p>
-            )}
-            <Button
-              onClick={generate}
-              disabled={!canGenerate}
-              className="w-full"
-              size="lg"
-            >
-              {parentStoryId ? "Generate New Version" : "Generate Story"}
-            </Button>
-          </div>
+          {/* Wish cost preview */}
+          <p className="text-center text-sm" style={{ color: "#a78bfa" }}>
+            This story costs <span style={{ color: "#d97706", fontWeight: 600 }}>✦ {creditsNeeded} {creditsNeeded === 1 ? "wish" : "wishes"}</span>
+          </p>
+
+          {/* Insufficient credits warning */}
+          {credits < creditsNeeded && (
+            <p className="text-sm text-center" style={{ color: "#ef4444" }}>
+              Not enough wishes. You need {creditsNeeded} but have {credits}.
+            </p>
+          )}
+
+          {/* Generate button */}
+          <button
+            type="submit"
+            onClick={generate}
+            disabled={!canGenerate}
+            style={{
+              width: "100%",
+              backgroundColor: canGenerate ? "#7c3aed" : "#e9d5ff",
+              color: canGenerate ? "#ffffff" : "#a78bfa",
+              borderRadius: "12px",
+              padding: "14px",
+              fontSize: "14px",
+              fontWeight: 500,
+              border: "none",
+              cursor: canGenerate ? "pointer" : "not-allowed",
+              transition: "background-color 0.15s",
+            }}
+          >
+            ✦ Grant my wishes
+          </button>
+
         </div>
       )}
     </div>
