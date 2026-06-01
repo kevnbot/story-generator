@@ -114,6 +114,15 @@ export interface GenerationParams {
   kid_profile_ids?: string[]
   kid_names?: string[]
   story_template_id: string
+  story_type_id?: string
+  art_style_id?: string
+  story_length?: string
+  text_density?: string
+  story_description?: string
+  story_type_extra_input?: string
+  custom_title?: string
+  include_images?: boolean
+  parent_story_id?: string
   prompt_summary: string
   system_prompt: string
   user_prompt: string
@@ -123,7 +132,9 @@ export interface GenerationParams {
   visuals_model?: string     // model used for visuals extraction
   image_prompts?: string[]   // full per-page prompts sent to the image model
   model: string
+  image_provider?: string
   image_model: string
+  workbench?: boolean
 }
 
 export interface Story {

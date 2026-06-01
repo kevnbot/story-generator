@@ -3,56 +3,18 @@
 import { useState } from "react"
 import { StoryGenerationTab } from "./StoryGenerationTab"
 import { CharacterReferencesTab } from "./CharacterReferencesTab"
-
-interface Profile {
-  id: string
-  name: string
-  age: number
-  age_months: number
-  gender?: string | null
-  appearance?: {
-    hair?: string
-    hair_color?: string
-    hair_style?: string
-    eye_color?: string
-    skin_tone?: string
-    glasses?: boolean
-    freckles?: boolean
-    other?: string
-  } | null
-  personality_tags?: string[] | null
-  toy?: {
-    name: string
-    type?: string
-    color?: string
-    description?: string
-  } | null
-  reference_image_path: string | null
-  reference_image_url?: string | null
-  combined_reference_path: string | null
-  combined_reference_url?: string | null
-  character_illustration_path: string | null
-  character_illustration_url?: string | null
-  illustration_status?: string | null
-}
-
-interface StoryType {
-  id: string
-  name: string
-  description: string
-  extra_input_label: string | null
-  extra_input_hint: string | null
-}
-
-interface ArtStyle {
-  id: string
-  name: string
-}
+import type {
+  WorkbenchArtStyle,
+  WorkbenchInitialStory,
+  WorkbenchProfile,
+  WorkbenchStoryType,
+} from "@/lib/admin/workbench-preload"
 
 interface WorkbenchClientProps {
-  profiles: Profile[]
-  storyTypes: StoryType[]
-  artStyles: ArtStyle[]
+  profiles: WorkbenchProfile[]
+  storyTypes: WorkbenchStoryType[]
+  artStyles: WorkbenchArtStyle[]
+  initialStory?: WorkbenchInitialStory | null
 }
 
 type ActiveTab = "story" | "characters"
@@ -62,7 +24,7 @@ const TABS: { id: ActiveTab; label: string }[] = [
   { id: "characters", label: "Character References" },
 ]
 
-export function WorkbenchClient({ profiles, storyTypes, artStyles }: WorkbenchClientProps) {
+export function WorkbenchClient({ profiles, storyTypes, artStyles, initialStory }: WorkbenchClientProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("story")
 
   return (
@@ -83,7 +45,14 @@ export function WorkbenchClient({ profiles, storyTypes, artStyles }: WorkbenchCl
         ))}
       </div>
 
-      {activeTab === "story" && <StoryGenerationTab profiles={profiles} storyTypes={storyTypes} artStyles={artStyles} />}
+      {activeTab === "story" && (
+        <StoryGenerationTab
+          profiles={profiles}
+          storyTypes={storyTypes}
+          artStyles={artStyles}
+          initialStory={initialStory ?? null}
+        />
+      )}
       {activeTab === "characters" && <CharacterReferencesTab profiles={profiles} />}
     </div>
   )

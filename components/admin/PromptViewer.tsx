@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react"
 import { Story } from "@/types"
 
@@ -52,22 +53,31 @@ function StoryPromptCard({ story }: { story: Story }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Header */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
-      >
-        <span className="text-muted-foreground">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </span>
-        <span className="flex-1 font-medium text-foreground truncate">{story.title}</span>
-        <span className="shrink-0 text-[12px] text-muted-foreground">{kidNames}</span>
-        {story.has_images && (
-          <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
-            images
+      <div className="flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/50">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <span className="text-muted-foreground">
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </span>
-        )}
-        <span className="shrink-0 text-[12px] text-muted-foreground">{dateLabel}</span>
-      </button>
+          <span className="flex-1 font-medium text-foreground truncate">{story.title}</span>
+          <span className="shrink-0 text-[12px] text-muted-foreground">{kidNames}</span>
+          {story.has_images && (
+            <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
+              images
+            </span>
+          )}
+          <span className="shrink-0 text-[12px] text-muted-foreground">{dateLabel}</span>
+        </button>
+        <Link
+          href={`/admin/workbench?storyId=${encodeURIComponent(story.id)}`}
+          className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+        >
+          View in workbench
+        </Link>
+      </div>
 
       {/* Prompt sections */}
       {open && (

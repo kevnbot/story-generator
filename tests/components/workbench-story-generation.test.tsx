@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { StoryGenerationTab } from "@/components/admin/workbench/StoryGenerationTab"
+import { buildWorkbenchInitialStory } from "@/lib/admin/workbench-preload"
 
 const profiles = [
   {
@@ -73,6 +74,67 @@ function getImageProviderRadio(value: string): HTMLInputElement {
 }
 
 describe("StoryGenerationTab image providers", () => {
+  it("preloads an imported prompt log and disables saving", () => {
+    const initialStory = buildWorkbenchInitialStory({
+      story: {
+        id: "story-1",
+        title: "Moon Adventure",
+        content: "--- Page 1 ---\nLuna found a map.\n--- Page 2 ---\nShe followed the stars.",
+        created_at: "2026-01-01T00:00:00.000Z",
+        account_id: "account-1",
+        user_id: "user-1",
+        kid_profile_id: "kid-luna",
+        parent_story_id: null,
+        has_images: false,
+        generation_params: {
+          kid_profile_ids: ["kid-luna"],
+          kid_names: ["Luna"],
+          story_type_id: "bedtime",
+          art_style_id: "watercolor",
+          story_length: "short",
+          text_density: "read_together",
+          story_description: "a moon map",
+          system_prompt: "System prompt",
+          user_prompt: "User prompt",
+          model: "claude-sonnet-4-6",
+          include_images: false,
+        },
+      },
+      sourceContext: {
+        storyId: "story-1",
+        storyTitle: "Moon Adventure",
+        storyCreatedAt: "2026-01-01T00:00:00.000Z",
+        accountId: "account-1",
+        accountName: "Luna Family",
+        userId: "user-1",
+        userEmail: "parent@example.com",
+        userDisplayName: "Parent",
+      },
+      storyTypes,
+      artStyles,
+      sourceProfileIds: ["kid-luna"],
+      archivedProfileNames: [],
+      resolvedImages: [],
+    })
+
+    render(
+      <StoryGenerationTab
+        profiles={profiles}
+        storyTypes={storyTypes}
+        artStyles={artStyles}
+        initialStory={initialStory}
+      />
+    )
+
+    expect(screen.getByText("Imported prompt log")).toBeInTheDocument()
+    expect(screen.getByText("User: Parent (parent@example.com)")).toBeInTheDocument()
+    expect(screen.getByLabelText(/Luna/)).toBeChecked()
+    expect(screen.getByDisplayValue("a moon map")).toBeInTheDocument()
+    expect(screen.getByText("Stage 1 — Prompt Builder")).toBeInTheDocument()
+    expect(screen.getByText("Stage 2 — Story Text")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /save disabled/i }).length).toBeGreaterThan(0)
+  })
+
   it("disables single-image Kontext for multiple profiles while keeping OpenAI and Gemini selectable", async () => {
     const user = userEvent.setup()
     render(<StoryGenerationTab profiles={profiles} storyTypes={storyTypes} artStyles={artStyles} />)

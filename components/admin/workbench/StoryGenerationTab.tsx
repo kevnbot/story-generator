@@ -14,63 +14,24 @@ import {
 import { listTextProviders } from "@/lib/ai/providers/text/registry"
 import { formatAge } from "@/lib/ai/prompt-builder"
 import type { StoryVisualContext } from "@/lib/ai/prompt-builder/visual-context"
+import type {
+  WorkbenchArtStyle,
+  WorkbenchInitialStory,
+  WorkbenchProfile,
+  WorkbenchStoryType,
+} from "@/lib/admin/workbench-preload"
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
-interface KidAppearance {
-  hair?: string
-  hair_color?: string
-  hair_style?: string
-  eye_color?: string
-  skin_tone?: string
-  glasses?: boolean
-  freckles?: boolean
-  other?: string
-}
-
-interface KidToy {
-  name: string
-  type?: string
-  color?: string
-  description?: string
-}
-
-interface Profile {
-  id: string
-  name: string
-  age: number
-  age_months: number
-  gender?: string | null
-  appearance?: KidAppearance | null
-  personality_tags?: string[] | null
-  toy?: KidToy | null
-  reference_image_path: string | null
-  reference_image_url?: string | null
-  combined_reference_path: string | null
-  combined_reference_url?: string | null
-  character_illustration_path: string | null
-  character_illustration_url?: string | null
-  illustration_status?: string | null
-}
-
-interface StoryType {
-  id: string
-  name: string
-  description: string
-  occasion_required?: boolean | null
-  extra_input_label: string | null
-  extra_input_hint: string | null
-}
-
-interface ArtStyle {
-  id: string
-  name: string
-}
+type Profile = WorkbenchProfile
+type StoryType = WorkbenchStoryType
+type ArtStyle = WorkbenchArtStyle
 
 interface StoryGenerationTabProps {
   profiles: Profile[]
   storyTypes: StoryType[]
   artStyles: ArtStyle[]
+  initialStory?: WorkbenchInitialStory | null
 }
 
 interface BuildPromptsResult {
@@ -1060,6 +1021,7 @@ function Stage7Card({
   savedStoryId,
   saveLoading,
   saveError,
+  saveDisabledReason,
   onSave,
 }: {
   storyTitle: string
@@ -1069,6 +1031,7 @@ function Stage7Card({
   savedStoryId: string | null
   saveLoading: boolean
   saveError: string | null
+  saveDisabledReason?: string | null
   onSave: () => void
 }) {
   const imageCost = includeImages ? STORY_LENGTHS[storyLength].imageCost : 0
@@ -1119,11 +1082,16 @@ function Stage7Card({
           </div>
         ) : (
           <>
-            <Button onClick={onSave} disabled={saveLoading} className="w-full">
-              {saveLoading
+            <Button onClick={onSave} disabled={saveLoading || Boolean(saveDisabledReason)} className="w-full">
+              {saveDisabledReason
+                ? "Save disabled for imported log"
+                : saveLoading
                 ? "Saving…"
                 : `Save as Story — deducts ${1 + imageCost} credits`}
             </Button>
+            {saveDisabledReason && (
+              <p className="text-xs text-muted-foreground">{saveDisabledReason}</p>
+            )}
             {saveError && (
               <p className="text-xs text-destructive">{saveError}</p>
             )}
@@ -1134,31 +1102,75 @@ function Stage7Card({
   )
 }
 
+function SourceContextBanner({ context }: { context: NonNullable<WorkbenchInitialStory["sourceContext"]> }) {
+  const createdLabel = new Date(context.storyCreatedAt).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+  const userLabel = context.userDisplayName
+    ? `${context.userDisplayName}${context.userEmail ? ` (${context.userEmail})` : ""}`
+    : context.userEmail ?? context.userId
+  const accountLabel = context.accountName
+    ? `${context.accountName} (${context.accountId})`
+    : context.accountId
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-semibold">Imported prompt log</span>
+        <span>{context.storyTitle}</span>
+        <span className="font-mono text-xs text-amber-800">{context.storyId}</span>
+      </div>
+      <div className="mt-2 grid gap-1 text-xs text-amber-900 sm:grid-cols-2">
+        <p>User: {userLabel}</p>
+        <p>Account: {accountLabel}</p>
+        <p>Generated: {createdLabel}</p>
+        <p>Saving: disabled for imported logs</p>
+      </div>
+      {(context.missingFields.length > 0 || context.archivedProfileNames.length > 0) && (
+        <div className="mt-2 space-y-1 text-xs text-amber-900">
+          {context.archivedProfileNames.length > 0 && (
+            <p>Archived source profiles: {context.archivedProfileNames.join(", ")}</p>
+          )}
+          {context.missingFields.length > 0 && (
+            <p>Replay notes: {context.missingFields.join(" ")}</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGenerationTabProps) {
-  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([])
-  const [storyTypeId, setStoryTypeId] = useState<string>(storyTypes[0]?.id ?? "")
-  const [storyLength, setStoryLength] = useState<StoryLength>("medium")
-  const [textDensity, setTextDensity] = useState<TextDensityKey>(DEFAULT_TEXT_DENSITY)
-  const [storyDescription, setStoryDescription] = useState("")
-  const [extraInput, setExtraInput] = useState("")
-  const [artStyleId, setArtStyleId] = useState<string>(artStyles[0]?.id ?? "")
-  const [textProvider, setTextProvider] = useState("anthropic")
-  const [imageProvider, setImageProvider] = useState(DEFAULT_IMAGE_PROVIDER_ID)
-  const [includeImages, setIncludeImages] = useState(true)
+export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialStory }: StoryGenerationTabProps) {
+  const sourceContext = initialStory?.sourceContext ?? null
+  const saveDisabledReason = initialStory?.saveDisabledReason ?? null
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(initialStory?.selectedProfileIds ?? [])
+  const [storyTypeId, setStoryTypeId] = useState<string>(initialStory?.storyTypeId ?? storyTypes[0]?.id ?? "")
+  const [storyLength, setStoryLength] = useState<StoryLength>(initialStory?.storyLength ?? "medium")
+  const [textDensity, setTextDensity] = useState<TextDensityKey>(initialStory?.textDensity ?? DEFAULT_TEXT_DENSITY)
+  const [storyDescription, setStoryDescription] = useState(initialStory?.storyDescription ?? "")
+  const [extraInput, setExtraInput] = useState(initialStory?.extraInput ?? "")
+  const [artStyleId, setArtStyleId] = useState<string>(initialStory?.artStyleId ?? artStyles[0]?.id ?? "")
+  const [textProvider, setTextProvider] = useState(initialStory?.textProvider ?? "anthropic")
+  const [imageProvider, setImageProvider] = useState(initialStory?.imageProvider ?? DEFAULT_IMAGE_PROVIDER_ID)
+  const [includeImages, setIncludeImages] = useState(initialStory?.includeImages ?? true)
 
   // Stage 1
   const [promptsLoading, setPromptsLoading] = useState(false)
-  const [promptsResult, setPromptsResult] = useState<BuildPromptsResult | null>(null)
+  const [promptsResult, setPromptsResult] = useState<BuildPromptsResult | null>(initialStory?.promptsResult ?? null)
   const [promptsError, setPromptsError] = useState<string | null>(null)
 
   // Stage 2
   const [textLoading, setTextLoading] = useState(false)
   const [streamingText, setStreamingText] = useState("")
-  const [textResult, setTextResult] = useState<TextResult | null>(null)
+  const [textResult, setTextResult] = useState<TextResult | null>(initialStory?.textResult ?? null)
   const [textError, setTextError] = useState<string | null>(null)
-  const [storyPages, setStoryPages] = useState<string[]>([])
+  const [storyPages, setStoryPages] = useState<string[]>(initialStory?.storyPages ?? [])
 
   // Stage 3
   const [visualLoading, setVisualLoading] = useState(false)
@@ -1171,16 +1183,16 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   const [referenceError, setReferenceError] = useState<string | null>(null)
 
   // Stage 5
-  const [imagePrompts, setImagePrompts] = useState<string[] | null>(null)
+  const [imagePrompts, setImagePrompts] = useState<string[] | null>(initialStory?.imagePrompts ?? null)
 
   // Stage 6
   const [imagesLoading, setImagesLoading] = useState(false)
-  const [imagesProgress, setImagesProgress] = useState(0)
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImageResult[] | null>(null)
+  const [imagesProgress, setImagesProgress] = useState(initialStory?.generatedImages?.length ?? 0)
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImageResult[] | null>(initialStory?.generatedImages ?? null)
   const [imagesError, setImagesError] = useState<string | null>(null)
 
   // Stage 7
-  const [storyTitle, setStoryTitle] = useState("")
+  const [storyTitle, setStoryTitle] = useState(initialStory?.storyTitle ?? "")
   const [saveLoading, setSaveLoading] = useState(false)
   const [savedStoryId, setSavedStoryId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -1192,13 +1204,14 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
     ? (selectedStoryType.occasion_required === true || selectedStoryType.extra_input_label !== null)
     : false
   const selectedProfiles = profiles.filter(p => selectedProfileIds.includes(p.id))
+  const selectedIncludesArchivedProfiles = selectedProfiles.some(p => Boolean(p.deleted_at))
   const providerCtx = getImageProviderMetadata(imageProvider)
-  const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading
+  const canBuildPrompts = selectedProfileIds.length > 0 && !!storyTypeId && !promptsLoading && !selectedIncludesArchivedProfiles
   const canGenerateText = !!promptsResult && !textLoading && !promptsLoading
   const canExtractVisual = storyPages.length > 0 && !visualLoading && !textLoading
-  const canBuildReference = selectedProfileIds.length > 0 && !referenceLoading
+  const canBuildReference = selectedProfileIds.length > 0 && !referenceLoading && !selectedIncludesArchivedProfiles
   const canGenerateImages = !!imagePrompts && !!referenceResult && includeImages && !imagesLoading && !referenceLoading
-  const canSaveStory = !!textResult && !saveLoading && (!includeImages || !!generatedImages)
+  const canSaveStory = !!textResult && !saveLoading && (!includeImages || !!generatedImages) && !saveDisabledReason
 
   function toggleProfile(id: string) {
     const next = selectedProfileIds.includes(id)
@@ -1510,6 +1523,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   }
 
   async function saveStory() {
+    if (saveDisabledReason) return
     if (!textResult) return
     setSaveLoading(true)
     setSaveError(null)
@@ -1525,6 +1539,10 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
       art_style_id: artStyleId,
       story_length: storyLength,
       text_density: textDensity,
+      story_description: storyDescription.trim() || undefined,
+      story_type_extra_input: extraInput.trim() || undefined,
+      custom_title: storyTitle.trim() || undefined,
+      include_images: includeImages,
       model: textResult.model,
       image_provider: includeImages ? imageProvider : undefined,
       image_model: includeImages ? providerCtx.modelId : undefined,
@@ -1561,7 +1579,10 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
   }
 
   return (
-    <div className="flex gap-6 items-start">
+    <div className="space-y-4">
+      {sourceContext && <SourceContextBanner context={sourceContext} />}
+
+      <div className="flex gap-6 items-start">
 
       {/* ── Left: Configuration Panel ────────────────────────────────────────── */}
       <div className="w-1/3 shrink-0 space-y-5">
@@ -1589,6 +1610,11 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                       <span className="text-sm font-medium">{p.name}</span>
                       <span className="text-xs text-muted-foreground">{formatAge(p.age, p.age_months)}</span>
                       {p.gender && <span className="text-xs text-muted-foreground">{p.gender}</span>}
+                      {p.deleted_at && (
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                          archived
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5">
                       <IllustrationStatusBadge profile={p} />
@@ -1596,6 +1622,11 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                   </div>
                 </label>
               ))}
+              {selectedIncludesArchivedProfiles && (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                  Archived source profiles are selected. Deselect them before rebuilding prompts or references.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1853,11 +1884,14 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
             onClick={saveStory}
             className="w-full"
           >
-            {saveLoading ? "Saving…" : "Save as Story"}
-            {!saveLoading && (
+            {saveDisabledReason ? "Save disabled" : saveLoading ? "Saving…" : "Save as Story"}
+            {!saveLoading && !saveDisabledReason && (
               <span className="ml-auto text-xs text-muted-foreground">(costs credits)</span>
             )}
           </Button>
+          {saveDisabledReason && (
+            <p className="text-xs text-muted-foreground px-1">{saveDisabledReason}</p>
+          )}
           {saveError && (
             <p className="text-xs text-destructive px-1">{saveError}</p>
           )}
@@ -2045,10 +2079,10 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
             )}
 
             {/* Stage 5 card */}
-            {imagePrompts && visualResult && (
+            {imagePrompts && (
               <Stage5Card
                 prompts={imagePrompts}
-                scenes={visualResult.visualContext.pageScenes}
+                scenes={visualResult?.visualContext.pageScenes ?? []}
                 onPromptsChange={setImagePrompts}
               />
             )}
@@ -2075,11 +2109,13 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles }: StoryGen
                 savedStoryId={savedStoryId}
                 saveLoading={saveLoading}
                 saveError={saveError}
+                saveDisabledReason={saveDisabledReason}
                 onSave={saveStory}
               />
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   )
