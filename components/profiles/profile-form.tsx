@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState } from "react"
+import { useActionState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,15 +24,14 @@ interface ProfileFormProps {
 
 export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
   const action = profile ? updateProfile.bind(null, profile.id) : createProfile
+  const submittedRef = useRef(false)
+  const [error, formAction, pending] = useActionState(action, null)
 
-  const [error, formAction, pending] = useActionState(
-    async (prev: string | null, formData: FormData) => {
-      const result = await action(prev, formData)
-      if (!result && onSuccess) onSuccess()
-      return result
-    },
-    null
-  )
+  useEffect(() => {
+    if (!submittedRef.current || pending) return
+    submittedRef.current = false
+    if (error === null) onSuccess?.()
+  }, [error, onSuccess, pending])
 
   const toyName = profile?.toy?.name === "their favorite toy" ? "" : (profile?.toy?.name ?? "")
   const toyDesc = profile?.toy?.description ?? profile?.toy?.type ?? ""
@@ -40,7 +39,7 @@ export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
   const personality = profile?.personality_tags?.[0] ?? ""
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} onSubmit={() => { submittedRef.current = true }} className="space-y-5">
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-1 space-y-1.5">
           <Label htmlFor="name">Child&apos;s name</Label>

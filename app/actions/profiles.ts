@@ -135,6 +135,8 @@ export async function updateProfile(profileId: string, prevState: string | null,
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return "Not authenticated"
 
+      if (!profileId) return "Profile id is required"
+
       const parsed = parseProfileFormData(formData)
       if (parsed.error) return parsed.error
       const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed

@@ -60,10 +60,10 @@ async function postOpenAiMultipart(form: FormData): Promise<Response> {
 async function singleAttempt(
   prompt: string,
   options: ImageGenerationOptions,
-): Promise<{ url: string | null; error: string | null; referenceImageCount: number }> {
+): Promise<{ url: string | null; error: string | null; referenceImageCount: number; statusCode: number | null }> {
   const referenceUrls = resolveReferenceImageUrls(options)
   const referenceError = validateReferenceCount(METADATA, referenceUrls, { requireAtLeastOne: false })
-  if (referenceError) return { url: null, error: referenceError, referenceImageCount: referenceUrls.length }
+  if (referenceError) return { url: null, error: referenceError, referenceImageCount: referenceUrls.length, statusCode: null }
 
   const size = OPENAI_SIZE_MAP[options.size ?? "landscape_4_3"]
   const labels = getReferenceImageLabels(options, referenceUrls.length)
@@ -104,7 +104,7 @@ async function singleAttempt(
       model: METADATA.modelId,
       error,
     })
-    return { url: null, error, referenceImageCount: referenceUrls.length }
+    return { url: null, error, referenceImageCount: referenceUrls.length, statusCode: null }
   }
 
   if (!response.ok) {
@@ -115,7 +115,7 @@ async function singleAttempt(
       status_code: response.status,
       error: errorText.slice(0, 500),
     })
-    return { url: null, error: errorText, referenceImageCount: referenceUrls.length }
+    return { url: null, error: errorText, referenceImageCount: referenceUrls.length, statusCode: response.status }
   }
 
   const data = await response.json() as OpenAiImageResponse
@@ -124,6 +124,7 @@ async function singleAttempt(
     url,
     error: url ? null : "no image data in response",
     referenceImageCount: referenceUrls.length,
+    statusCode: response.status,
   }
 }
 
@@ -138,15 +139,15 @@ export const openaiProvider: ImageProvider = {
     const referenceImageCount = resolveReferenceImageUrls(options).length
     if (!process.env.OPENAI_API_KEY) {
       Sentry.logger.error("OpenAI API key missing; skipping image generation", { provider: "openai" })
-      return { url: null, error: "OPENAI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount }
+      return { url: null, error: "OPENAI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
     }
 
-    let lastResult: ImageResult = { url: null, error: null, isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount }
+    let lastResult: ImageResult = { url: null, error: null, isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const { url, error, referenceImageCount: refsUsed } = await singleAttempt(prompt, options)
+      const { url, error, referenceImageCount: refsUsed, statusCode } = await singleAttempt(prompt, options)
       const isBlackImage = url !== null ? await detectBlackImage(url) : false
-      lastResult = { url, error, isBlackImage, attempts: attempt, modelId: METADATA.modelId, referenceImageCount: refsUsed }
+      lastResult = { url, error, isBlackImage, attempts: attempt, modelId: METADATA.modelId, referenceImageCount: refsUsed, statusCode }
 
       if (url && !isBlackImage) return lastResult
 

@@ -27,4 +27,5 @@ export interface ImageResult {
   attempts: number
   modelId?: string
   referenceImageCount?: number
+  statusCode?: number | null
 }

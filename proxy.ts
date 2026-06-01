@@ -21,6 +21,7 @@ export async function proxy(request: NextRequest) {
   const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r))
   const isPublicMetadata = PUBLIC_METADATA_ROUTES.includes(pathname)
   const isStatic = pathname.startsWith("/_next") || pathname.startsWith("/favicon")
+  const isServerAction = request.headers.has("next-action")
 
   if (isStatic || isPublicMetadata) {
     return NextResponse.next({ request })
@@ -57,6 +58,8 @@ export async function proxy(request: NextRequest) {
 
   // Redirect unauthenticated users to login
   if (!user && !isPublic) {
+    if (isServerAction) return supabaseResponse
+
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = "/login"
     loginUrl.searchParams.set("redirectTo", sanitizeInternalRedirect(pathname))

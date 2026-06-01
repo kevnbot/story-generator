@@ -20,6 +20,6 @@ export function getImageProvider(id: string): ImageProvider {
 
 export const PROVIDER_OPTIONS: { id: string; label: string }[] = [
   { id: "fal",    label: "fal.ai (FLUX)" },
-  { id: "openai", label: "OpenAI (gpt-image-1)" },
+  { id: "openai", label: "OpenAI GPT Image 2" },
   { id: "gemini", label: "Google Gemini 3 Pro Image" },
 ]

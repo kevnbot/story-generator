@@ -27,6 +27,7 @@ type GeminiPart = {
   text?: string
   inlineData?: GeminiInlineData
   inline_data?: GeminiInlineData
+  thought?: boolean
 }
 
 type GeminiResponse = {
@@ -40,6 +41,7 @@ type GeminiResponse = {
 function extractGeminiImageUrl(data: GeminiResponse): string | null {
   const parts = data.candidates?.[0]?.content?.parts ?? []
   for (const part of parts) {
+    if (part.thought) continue
     const inlineData = part.inlineData ?? part.inline_data
     if (inlineData?.data) {
       return dataUriFromBase64(inlineData.data, inlineData.mimeType ?? inlineData.mime_type ?? GEMINI_OUTPUT_MIME_TYPE)
@@ -51,10 +53,10 @@ function extractGeminiImageUrl(data: GeminiResponse): string | null {
 async function singleAttempt(
   prompt: string,
   options: ImageGenerationOptions,
-): Promise<{ url: string | null; error: string | null; referenceImageCount: number }> {
+): Promise<{ url: string | null; error: string | null; referenceImageCount: number; statusCode: number | null }> {
   const referenceUrls = resolveReferenceImageUrls(options)
   const referenceError = validateReferenceCount(METADATA, referenceUrls, { requireAtLeastOne: false })
-  if (referenceError) return { url: null, error: referenceError, referenceImageCount: referenceUrls.length }
+  if (referenceError) return { url: null, error: referenceError, referenceImageCount: referenceUrls.length, statusCode: null }
 
   const labels = getReferenceImageLabels(options, referenceUrls.length)
   const aspectRatio = ASPECT_RATIO_MAP[options.size ?? "landscape_4_3"]
@@ -63,7 +65,7 @@ async function singleAttempt(
   try {
     const references = await loadReferenceImages(referenceUrls)
     response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${METADATA.modelId}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1/models/${METADATA.modelId}:generateContent`,
       {
         method: "POST",
         headers: {
@@ -83,9 +85,12 @@ async function singleAttempt(
             ],
           }],
           generationConfig: {
-            responseModalities: ["Image"],
-            imageConfig: {
-              aspectRatio,
+            responseModalities: ["IMAGE"],
+            responseFormat: {
+              image: {
+                aspectRatio,
+                imageSize: "1K",
+              },
             },
           },
         }),
@@ -98,7 +103,7 @@ async function singleAttempt(
       model: METADATA.modelId,
       error,
     })
-    return { url: null, error, referenceImageCount: referenceUrls.length }
+    return { url: null, error, referenceImageCount: referenceUrls.length, statusCode: null }
   }
 
   if (!response.ok) {
@@ -109,7 +114,7 @@ async function singleAttempt(
       status_code: response.status,
       error: errorText.slice(0, 500),
     })
-    return { url: null, error: errorText, referenceImageCount: referenceUrls.length }
+    return { url: null, error: errorText, referenceImageCount: referenceUrls.length, statusCode: response.status }
   }
 
   const data = await response.json() as GeminiResponse
@@ -118,6 +123,7 @@ async function singleAttempt(
     url,
     error: url ? null : "no image data in response",
     referenceImageCount: referenceUrls.length,
+    statusCode: response.status,
   }
 }
 
@@ -132,15 +138,15 @@ export const geminiProvider: ImageProvider = {
     const referenceImageCount = resolveReferenceImageUrls(options).length
     if (!process.env.GEMINI_API_KEY) {
       Sentry.logger.error("Gemini API key missing; skipping image generation", { provider: "gemini" })
-      return { url: null, error: "GEMINI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount }
+      return { url: null, error: "GEMINI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
     }
 
-    let lastResult: ImageResult = { url: null, error: null, isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount }
+    let lastResult: ImageResult = { url: null, error: null, isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const { url, error, referenceImageCount: refsUsed } = await singleAttempt(prompt, options)
+      const { url, error, referenceImageCount: refsUsed, statusCode } = await singleAttempt(prompt, options)
       const isBlackImage = url !== null ? await detectBlackImage(url) : false
-      lastResult = { url, error, isBlackImage, attempts: attempt, modelId: METADATA.modelId, referenceImageCount: refsUsed }
+      lastResult = { url, error, isBlackImage, attempts: attempt, modelId: METADATA.modelId, referenceImageCount: refsUsed, statusCode }
 
       if (url && !isBlackImage) return lastResult
 

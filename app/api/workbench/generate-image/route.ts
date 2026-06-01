@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { getImageProvider } from "@/lib/ai/providers/image/registry"
+import type { ImageResult } from "@/lib/ai/providers/image/types"
 
 interface ImageAttemptLog {
   attempt: number
@@ -10,6 +11,33 @@ interface ImageAttemptLog {
   contentLengthBytes: number | null
   rejectionReason: string | null
   backoffMs: number | null
+}
+
+function sanitizeProviderError(error: string | null): string | null {
+  if (!error) return null
+
+  let message = error
+  try {
+    const parsed = JSON.parse(error) as {
+      error?: { message?: string; code?: string; type?: string; status?: string }
+      message?: string
+    }
+    const providerMessage = parsed.error?.message ?? parsed.message
+    if (providerMessage) {
+      const prefix = [parsed.error?.status, parsed.error?.code, parsed.error?.type]
+        .filter(Boolean)
+        .join(" ")
+      message = prefix ? `${prefix}: ${providerMessage}` : providerMessage
+    }
+  } catch {
+    // Provider responses are not always JSON.
+  }
+
+  return message
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/AIza[0-9A-Za-z_-]+/g, "[redacted]")
+    .replace(/[A-Za-z0-9_-]{32,}:[A-Za-z0-9_-]{32,}/g, "[redacted]")
+    .slice(0, 1000)
 }
 
 export async function POST(request: NextRequest) {
@@ -46,11 +74,31 @@ export async function POST(request: NextRequest) {
   }
 
   const startMs = Date.now()
-  const result = await provider.generateImage(prompt, {
-    referenceImageUrl: referenceImageUrl ?? undefined,
-    referenceImageUrls: referenceImageUrls ?? undefined,
-    referenceImageLabels: referenceImageLabels ?? undefined,
-  })
+  let result: ImageResult
+  try {
+    result = await provider.generateImage(prompt, {
+      referenceImageUrl: referenceImageUrl ?? undefined,
+      referenceImageUrls: referenceImageUrls ?? undefined,
+      referenceImageLabels: referenceImageLabels ?? undefined,
+    })
+  } catch (error) {
+    const durationMs = Date.now() - startMs
+    return NextResponse.json({
+      pageIndex,
+      url: "/images/story-image-error.svg",
+      isErrorPlaceholder: true,
+      provider: provider.label,
+      model: provider.modelId,
+      referenceUsed: false,
+      attempts: 0,
+      attemptsLog: [],
+      isBlackImage: false,
+      contentLengthBytes: null,
+      rawResponseStatus: null,
+      error: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
+      durationMs,
+    })
+  }
   const durationMs = Date.now() - startMs
 
   const isErrorPlaceholder = result.url === null || result.isBlackImage
@@ -71,8 +119,8 @@ export async function POST(request: NextRequest) {
     attemptsLog,
     isBlackImage: result.isBlackImage,
     contentLengthBytes: null,
-    rawResponseStatus: null,
-    error: result.error,
+    rawResponseStatus: result.statusCode ?? null,
+    error: sanitizeProviderError(result.error),
     durationMs,
   })
 }

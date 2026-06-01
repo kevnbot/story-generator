@@ -25,8 +25,9 @@ describe("OpenAI image provider", () => {
       error: null,
       isBlackImage: false,
       attempts: 1,
-      modelId: "gpt-image-1",
+      modelId: "gpt-image-2",
       referenceImageCount: 0,
+      statusCode: 200,
     })
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.openai.com/v1/images/generations",
@@ -72,7 +73,7 @@ describe("OpenAI image provider", () => {
     const form = editCall?.[1]?.body as FormData
     const entries = Array.from(form.entries())
     expect(entries.filter(([key]) => key === "image[]")).toHaveLength(3)
-    expect(entries.find(([key]) => key === "model")?.[1]).toBe("gpt-image-1")
+    expect(entries.find(([key]) => key === "model")?.[1]).toBe("gpt-image-2")
     expect(entries.find(([key]) => key === "prompt")?.[1]).toContain("Reference image 3 is Ava's profile reference.")
   })
 })

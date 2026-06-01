@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { geminiProvider } from "@/lib/ai/providers/image/gemini"
 
+const thoughtBase64 = Buffer.alloc(6000, 2).toString("base64")
 const outputBase64 = Buffer.alloc(6000, 1).toString("base64")
 const inputBytes = new Uint8Array([1, 2, 3, 4])
 
@@ -22,7 +23,10 @@ describe("Gemini image provider", () => {
         JSON.stringify({
           candidates: [{
             content: {
-              parts: [{ inlineData: { mimeType: "image/png", data: outputBase64 } }],
+              parts: [
+                { thought: true, inlineData: { mimeType: "image/png", data: thoughtBase64 } },
+                { inlineData: { mimeType: "image/png", data: outputBase64 } },
+              ],
             },
           }],
         }),
@@ -51,12 +55,14 @@ describe("Gemini image provider", () => {
       error: null,
       isBlackImage: false,
       attempts: 1,
-      modelId: "gemini-3-pro-image-preview",
+      modelId: "gemini-3-pro-image",
       referenceImageCount: 3,
+      statusCode: 200,
     })
 
     const apiCall = fetchMock.mock.calls.find(([url]) => String(url).includes(":generateContent"))
     expect(apiCall).toBeDefined()
+    expect(String(apiCall?.[0])).toBe("https://generativelanguage.googleapis.com/v1/models/gemini-3-pro-image:generateContent")
     const body = JSON.parse(String(apiCall?.[1]?.body))
     expect(body.contents[0].parts).toHaveLength(4)
     expect(body.contents[0].parts[0].text).toContain("Reference image 3 is Ava's profile reference.")
@@ -65,6 +71,12 @@ describe("Gemini image provider", () => {
       { inline_data: { mime_type: "image/png", data: Buffer.from(inputBytes).toString("base64") } },
       { inline_data: { mime_type: "image/png", data: Buffer.from(inputBytes).toString("base64") } },
     ])
-    expect(body.generationConfig.responseModalities).toEqual(["Image"])
+    expect(body.generationConfig.responseModalities).toEqual(["IMAGE"])
+    expect(body.generationConfig.responseFormat).toEqual({
+      image: {
+        aspectRatio: "4:3",
+        imageSize: "1K",
+      },
+    })
   })
 })

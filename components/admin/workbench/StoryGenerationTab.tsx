@@ -989,6 +989,7 @@ function Stage6Card({
                 <p>Reference used: {result.referenceUsed ? "✓" : "✗"}</p>
                 <p>Attempts: {result.attempts}</p>
                 <p>Black image detected: {result.isBlackImage ? "Yes" : "No"}</p>
+                {result.rawResponseStatus !== null && <p>HTTP status: {result.rawResponseStatus}</p>}
                 <p>Duration: {(result.durationMs / 1000).toFixed(1)}s</p>
                 {result.error && <p className="text-destructive">Error: {result.error}</p>}
                 {result.attemptsLog.length > 0 && (
@@ -1467,7 +1468,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
         } else {
           results.push({
             pageIndex: i, url: "/images/story-image-error.svg", isErrorPlaceholder: true,
-            provider: imageProvider, model: "", referenceUsed: false, attempts: 0,
+            provider: providerCtx.label, model: providerCtx.modelId, referenceUsed: false, attempts: 0,
             attemptsLog: [], isBlackImage: false, contentLengthBytes: null,
             rawResponseStatus: null, error: (data as { error?: string }).error ?? "Failed", durationMs: 0,
           })
@@ -1475,7 +1476,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
       } catch {
         results.push({
           pageIndex: i, url: "/images/story-image-error.svg", isErrorPlaceholder: true,
-          provider: imageProvider, model: "", referenceUsed: false, attempts: 0,
+          provider: providerCtx.label, model: providerCtx.modelId, referenceUsed: false, attempts: 0,
           attemptsLog: [], isBlackImage: false, contentLengthBytes: null,
           rawResponseStatus: null, error: "Network error", durationMs: 0,
         })
@@ -1513,6 +1514,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
           ...updated[pageIndex],
           isErrorPlaceholder: true,
           url: "/images/story-image-error.svg",
+          provider: updated[pageIndex]?.provider ?? providerCtx.label,
+          model: updated[pageIndex]?.model || providerCtx.modelId,
           error: (data as { error?: string }).error ?? "Failed",
         }
       }
