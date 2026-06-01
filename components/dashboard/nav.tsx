@@ -8,6 +8,7 @@ const tabs = [
   { href: "/generate", label: "Create", icon: "✦" },
   { href: "/library", label: "Library", icon: "📚" },
   { href: "/profiles", label: "Profile", icon: "👤" },
+  { href: "/account/billing", label: "Billing", icon: "💳" },
 ]
 
 export function Nav({

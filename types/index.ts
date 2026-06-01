@@ -7,7 +7,9 @@ export type GenerationJobStatus = "pending" | "generating" | "complete" | "faile
 export type CommChannel = "email" | "sms"
 export type CommType = "transactional" | "marketing" | "2fa"
 export type CommStatus = "sent" | "delivered" | "failed" | "bounced" | "opted_out"
-export type CreditTransactionType = "purchase" | "spend" | "refund" | "promo"
+export type CreditTransactionType = "purchase" | "spend" | "refund" | "promo" | "subscription_grant"
+export type BillingInterval = "month" | "year"
+export type BillingPlanId = "starter" | "family"
 
 export interface Account {
   id: string
@@ -151,6 +153,93 @@ export interface CreditTransaction {
   type: CreditTransactionType
   description: string | null
   stripe_session_id: string | null
+  stripe_invoice_id: string | null
+  stripe_subscription_id: string | null
+  stripe_event_id: string | null
+  created_at: string
+}
+
+export interface AccountBillingProfile {
+  account_id: string
+  stripe_customer_id: string
+  billing_email: string | null
+  billing_name: string | null
+  billing_country: string | null
+  billing_postal_code: string | null
+  tax_exempt: string | null
+  tax_automatic_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BillingCheckoutSession {
+  id: string
+  account_id: string
+  user_id: string
+  stripe_session_id: string
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  plan: BillingPlanId
+  billing_interval: BillingInterval
+  stripe_price_id: string
+  monthly_wishes: number
+  wishes_granted: number
+  status: string
+  mode: string
+  automatic_tax_enabled: boolean
+  tax_amount: number | null
+  currency: string | null
+  success_url: string
+  cancel_url: string
+  created_at: string
+  completed_at: string | null
+}
+
+export interface BillingSubscription {
+  id: string
+  account_id: string
+  stripe_customer_id: string
+  stripe_subscription_id: string
+  stripe_price_id: string | null
+  stripe_product_id: string | null
+  plan: BillingPlanId
+  billing_interval: BillingInterval
+  status: string
+  monthly_wishes: number
+  wishes_per_invoice: number
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  cancel_at: string | null
+  canceled_at: string | null
+  latest_invoice_id: string | null
+  latest_invoice_status: string | null
+  latest_invoice_amount_paid: number | null
+  latest_invoice_amount_due: number | null
+  latest_invoice_amount_tax: number | null
+  latest_invoice_currency: string | null
+  latest_invoice_hosted_url: string | null
+  latest_payment_failed_at: string | null
+  latest_payment_error: string | null
+  automatic_tax_enabled: boolean
+  automatic_tax_status: string | null
+  tax_country: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface StripeEventLog {
+  id: string
+  type: string
+  livemode: boolean
+  api_version: string | null
+  object_id: string | null
+  account_id: string | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  stripe_invoice_id: string | null
+  processing_error: string | null
+  processed_at: string | null
   created_at: string
 }
 

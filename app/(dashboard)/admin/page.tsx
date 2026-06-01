@@ -72,6 +72,9 @@ export default async function AdminPage() {
           <Link href="/admin/workbench" className="text-sm text-muted-foreground hover:text-foreground">
             → Prompt Workbench
           </Link>
+          <Link href="/admin/billing" className="text-sm text-muted-foreground hover:text-foreground">
+            → Billing
+          </Link>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Generation prompts for the {stories.length} most recent stories. Expand a row to see all prompts sent.
