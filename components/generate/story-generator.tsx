@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -94,11 +95,16 @@ export function StoryGenerator({
   const [storyTitle, setStoryTitle] = useState("")
   const [storyId, setStoryId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
+  const [lumaState, setLumaState] = useState<"idle" | "lean" | "nod">("idle")
+  const lumaLearnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up debounce timer on unmount
+  useEffect(() => () => { if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current) }, [])
 
   const lengthConfig = STORY_LENGTHS[storyLength]
   const imageCost = includeImages && imagesAvailable ? lengthConfig.imageCost : 0
   const creditsNeeded = 1 + imageCost
-  const canGenerate = selectedIds.size > 0 && !!storyTypeId && credits >= creditsNeeded && status !== "generating"
+  const canGenerate = selectedIds.size > 0 && !!storyTypeId && credits >= creditsNeeded && status !== "generating" && lumaState !== "nod"
 
   const isIllustrating = statusMessage.toLowerCase().startsWith("generating") ||
     statusMessage.toLowerCase().startsWith("illustrating")
@@ -207,6 +213,30 @@ export function StoryGenerator({
     }
   }
 
+  function handleGenerate() {
+    if (!canGenerate) return
+    setLumaState("nod")
+    setTimeout(() => {
+      setLumaState("idle")
+      generate()
+    }, 700)
+  }
+
+  function handleStoryDescriptionChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setStoryDescription(e.target.value)
+    if (lumaState === "nod") return
+    setLumaState("lean")
+    if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current)
+    lumaLearnTimer.current = setTimeout(() => setLumaState("idle"), 1500)
+  }
+
+  function handleStoryDescriptionFocus() {
+    if (lumaState === "nod") return
+    setLumaState("lean")
+    if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current)
+    lumaLearnTimer.current = setTimeout(() => setLumaState("idle"), 1500)
+  }
+
   if (profiles.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] text-center gap-4">
@@ -230,6 +260,43 @@ export function StoryGenerator({
 
   return (
     <div style={{ maxWidth: "480px", margin: "0 auto", paddingBottom: "8px" }}>
+      <style>{`
+        @keyframes luma-float {
+          0%, 100% { transform: translateY(0); }
+          50%       { transform: translateY(-4px); }
+        }
+        @keyframes luma-lean {
+          0%, 100% { transform: rotate(0deg) translateY(0); }
+          50%       { transform: rotate(-8deg) translateY(-3px); }
+        }
+        @keyframes genie-nod {
+          0%   { transform: rotate(0deg); }
+          15%  { transform: rotate(-6deg); }
+          30%  { transform: rotate(4deg); }
+          50%  { transform: rotate(-10deg); }
+          65%  { transform: rotate(6deg); }
+          80%  { transform: rotate(-4deg); }
+          100% { transform: rotate(0deg); }
+        }
+        @keyframes arms-cross {
+          0%, 100% { transform: scaleX(1); }
+          40%, 60% { transform: scaleX(0.82); }
+        }
+        @keyframes btn-glow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0); }
+          50%       { box-shadow: 0 0 0 4px rgba(124,58,237,0.18); }
+        }
+        @keyframes blink {
+          0%, 90%, 100% { transform: scaleY(1); }
+          95%           { transform: scaleY(0.08); }
+        }
+        .luma-gen-idle   { animation: luma-float 3s ease-in-out infinite; }
+        .luma-gen-lean   { animation: luma-lean 3s ease-in-out infinite; }
+        .luma-gen-nod    { animation: genie-nod 0.7s ease-out forwards; }
+        .luma-gen-arms   { animation: arms-cross 0.7s ease-out forwards; }
+        .luma-gen-blink  { animation: blink 4s ease-in-out 1s infinite; transform-origin: center center; }
+        .luma-btn-glow   { animation: btn-glow 2.5s ease-in-out infinite; }
+      `}</style>
 
       {/* Page header */}
       <div className="mb-6">
@@ -568,7 +635,8 @@ export function StoryGenerator({
               rows={3}
               placeholder="e.g. going to the dentist for the first time, a dragon who is afraid of the dark, finding a secret door in the garden…"
               value={storyDescription}
-              onChange={e => setStoryDescription(e.target.value)}
+              onChange={handleStoryDescriptionChange}
+              onFocus={handleStoryDescriptionFocus}
               style={{
                 width: "100%",
                 borderRadius: "12px",
@@ -649,26 +717,64 @@ export function StoryGenerator({
             </p>
           )}
 
-          {/* Generate button */}
-          <button
-            type="submit"
-            onClick={generate}
-            disabled={!canGenerate}
-            style={{
-              width: "100%",
-              backgroundColor: canGenerate ? "#7c3aed" : "#e9d5ff",
-              color: canGenerate ? "#ffffff" : "#a78bfa",
-              borderRadius: "12px",
-              padding: "14px",
-              fontSize: "14px",
-              fontWeight: 500,
-              border: "none",
-              cursor: canGenerate ? "pointer" : "not-allowed",
-              transition: "background-color 0.15s",
-            }}
-          >
-            ✦ Grant my wishes
-          </button>
+          {/* Generate button — Luma sits to the left in a flex row */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Luma — outer div rotates (genie-nod), inner div scaleX (arms-cross) */}
+            <div
+              className={lumaState === "nod" ? "luma-gen-nod" : lumaState === "lean" ? "luma-gen-lean" : "luma-gen-idle"}
+              style={{ position: "relative", width: "48px", height: "48px", flexShrink: 0 }}
+            >
+              <div
+                className={lumaState === "nod" ? "luma-gen-arms" : ""}
+                style={{ width: "100%", height: "100%" }}
+              >
+                <Image
+                  src="/mascot/luma.png"
+                  alt="Luma, your story genie"
+                  width={48}
+                  height={48}
+                  style={{ display: "block" }}
+                />
+              </div>
+              {/* Blink overlay — approximate eye position at 48px */}
+              <span
+                className="luma-gen-blink"
+                style={{
+                  position: "absolute",
+                  top: "17px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: "19px",
+                  height: "3px",
+                  background: "linear-gradient(90deg, rgba(180,140,100,0) 0%, rgba(180,140,100,0.65) 30%, rgba(180,140,100,0.65) 70%, rgba(180,140,100,0) 100%)",
+                  borderRadius: "2px",
+                  pointerEvents: "none",
+                }}
+                aria-hidden="true"
+              />
+            </div>
+
+            <button
+              type="submit"
+              onClick={handleGenerate}
+              disabled={!canGenerate}
+              className={lumaState === "idle" && canGenerate ? "luma-btn-glow" : ""}
+              style={{
+                flex: 1,
+                backgroundColor: lumaState === "nod" ? "#5b21b6" : canGenerate ? "#7c3aed" : "#e9d5ff",
+                color: canGenerate ? "#ffffff" : "#a78bfa",
+                borderRadius: "12px",
+                padding: "14px",
+                fontSize: "14px",
+                fontWeight: 500,
+                border: "none",
+                cursor: canGenerate ? "pointer" : "not-allowed",
+                transition: "background-color 0.15s",
+              }}
+            >
+              {lumaState === "nod" ? "Granting..." : "✦ Grant my wishes"}
+            </button>
+          </div>
 
         </div>
       )}
