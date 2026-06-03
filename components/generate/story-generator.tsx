@@ -269,7 +269,16 @@ export function StoryGenerator({
   if (status === "generating") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center px-4">
-        <div className="text-5xl animate-bounce">✨</div>
+        <img
+          src="/luma.png"
+          alt="Luma is writing your story"
+          className="w-32 h-32 object-contain drop-shadow-sm"
+        />
+        <div className="flex gap-3 text-3xl">
+          <span className="animate-bounce" style={{ animationDelay: "0ms" }}>✨</span>
+          <span className="animate-bounce" style={{ animationDelay: "150ms" }}>⭐</span>
+          <span className="animate-bounce" style={{ animationDelay: "300ms" }}>✨</span>
+        </div>
         <div>
           <h2 className="text-xl font-semibold mb-1">
             {isIllustrating ? "Bringing your story to life..." : "Writing your story..."}

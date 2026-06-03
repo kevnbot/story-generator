@@ -86,6 +86,7 @@ describe("StoryLibrary", () => {
       />
     )
 
+    await user.click(screen.getByRole("button", { name: /Filter & Sort/i }))
     await user.selectOptions(screen.getByLabelText("All kids"), "kid-max")
 
     expect(screen.getByText("1 story of 2")).toBeInTheDocument()

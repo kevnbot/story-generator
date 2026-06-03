@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, SlidersHorizontal } from "lucide-react"
 import Link from "next/link"
 import { Story, KidProfile, StoryTemplate } from "@/types"
 import BookCard from "./BookCard"
@@ -198,6 +198,7 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
   const [activeBookId, setActiveBookId] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   // Read on first render to decide whether to skip the enter animation
   const [skipEnter] = useState(() => {
     if (typeof window === "undefined") return false
@@ -275,54 +276,80 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
         )}
       </div>
 
-      {/* Filter bar ─────────────────────────────────────────────────────────
-          To add a new filter, add a <FilterDropdown> here and a matching
-          entry in FilterState + filters.ts. The applyFiltersAndSort function
-          handles the logic. The sort dropdown always lives at the end.
-      ──────────────────────────────────────────────────────────────────── */}
+      {/* Filter toggle button */}
       {stories.length > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <FilterDropdown
-            label="All kids"
-            value={filters.childId}
-            options={childOptions}
-            onChange={(v) => setFilter("childId", v)}
-          />
-          <FilterDropdown
-            label="Any date"
-            value={filters.dateRange}
-            options={DATE_RANGE_OPTIONS}
-            onChange={(v) => setFilter("dateRange", v)}
-          />
-          <FilterDropdown
-            label="Any length"
-            value={filters.length}
-            options={LENGTH_OPTIONS}
-            onChange={(v) => setFilter("length", v)}
-          />
-          {templates.length > 0 && (
-            <FilterDropdown
-              label="All templates"
-              value={filters.template}
-              options={templateOptions}
-              onChange={(v) => setFilter("template", v)}
-            />
-          )}
-
-          {/* Spacer pushes sort to the right */}
-          <div className="flex-1" />
-
-          <SortDropdown value={sort} onChange={setSort} />
-
-          {activeFilterCount > 0 && (
+        <>
+          <div className="mb-4 flex items-center gap-2">
             <button
-              onClick={clearFilters}
-              className="rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted"
+              type="button"
+              onClick={() => setFiltersOpen(v => !v)}
+              className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors"
+              style={{
+                borderColor: activeFilterCount > 0 ? "#7c3aed" : undefined,
+                background: activeFilterCount > 0 ? "#f5f0ff" : undefined,
+                color: activeFilterCount > 0 ? "#7c3aed" : undefined,
+              }}
             >
-              Clear
+              <SlidersHorizontal className="w-3 h-3" />
+              Filter & Sort
+              {activeFilterCount > 0 && (
+                <span
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold"
+                  style={{ background: "#7c3aed", color: "white" }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown className={`w-3 h-3 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
             </button>
+
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Collapsible filter panel */}
+          {filtersOpen && (
+            <div
+              className="mb-4 flex flex-wrap gap-2 rounded-xl border p-3"
+              style={{ borderColor: "#e9d5ff", background: "#faf5ff" }}
+            >
+              <FilterDropdown
+                label="All kids"
+                value={filters.childId}
+                options={childOptions}
+                onChange={(v) => setFilter("childId", v)}
+              />
+              <FilterDropdown
+                label="Any date"
+                value={filters.dateRange}
+                options={DATE_RANGE_OPTIONS}
+                onChange={(v) => setFilter("dateRange", v)}
+              />
+              <FilterDropdown
+                label="Any length"
+                value={filters.length}
+                options={LENGTH_OPTIONS}
+                onChange={(v) => setFilter("length", v)}
+              />
+              {templates.length > 0 && (
+                <FilterDropdown
+                  label="All templates"
+                  value={filters.template}
+                  options={templateOptions}
+                  onChange={(v) => setFilter("template", v)}
+                />
+              )}
+              <div className="flex-1" />
+              <SortDropdown value={sort} onChange={setSort} />
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Filter mismatch — stories exist but none match */}
