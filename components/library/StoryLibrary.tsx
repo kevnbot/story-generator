@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react"
 import { ChevronDown } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image"
 import { Story, KidProfile, StoryTemplate } from "@/types"
 import BookCard from "./BookCard"
 import {
@@ -409,12 +408,10 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
 
                 {/* Image with tail-sway applied via wrapper span */}
                 <span className="luma-lib-tail">
-                  <Image
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                     src="/mascot/luma.png"
                     alt="Luma, your story genie"
-                    width={128}
-                    height={128}
-                    priority
                     style={{ width: "72px", height: "auto" }}
                   />
                 </span>

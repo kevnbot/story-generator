@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -728,11 +727,10 @@ export function StoryGenerator({
                 className={lumaState === "nod" ? "luma-gen-arms" : ""}
                 style={{ width: "100%", height: "100%" }}
               >
-                <Image
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="/mascot/luma.png"
                   alt="Luma, your story genie"
-                  width={64}
-                  height={64}
                   style={{ width: "48px", height: "auto" }}
                 />
               </div>
