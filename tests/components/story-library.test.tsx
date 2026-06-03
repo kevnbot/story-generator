@@ -89,7 +89,8 @@ describe("StoryLibrary", () => {
     await user.selectOptions(screen.getByLabelText("All kids"), "kid-max")
 
     expect(screen.getByText("1 story of 2")).toBeInTheDocument()
-    expect(screen.getByText("Max Rocket Race")).toBeInTheDocument()
+    // Title appears in both the spine and the popover (2 elements expected)
+    expect(screen.getAllByText("Max Rocket Race")).toHaveLength(2)
     expect(screen.queryByText("Luna Moon Mission")).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Clear" }))

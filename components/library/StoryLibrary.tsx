@@ -98,26 +98,42 @@ function NewStorySlot() {
     <Link
       href="/generate"
       style={{
-        backgroundColor: "#f5f0ff",
-        border: "1.5px dashed #c4b5fd",
-        borderRadius: "10px",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        aspectRatio: "2/3",
+        justifyContent: "space-between",
+        width: "38px",
+        height: "110px",
+        border: "2px dashed rgba(255,255,255,0.25)",
+        background: "rgba(255,255,255,0.05)",
+        borderRadius: "2px 4px 4px 2px",
+        padding: "8px 4px",
         textDecoration: "none",
-        gap: "4px",
+        flexShrink: 0,
       }}
       aria-label="Generate a new story"
     >
-      <span style={{ fontSize: "18px", color: "#7c3aed" }}>✦</span>
-      <span style={{ fontSize: "10px", fontWeight: 500, color: "#7c3aed" }}>New story</span>
+      <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.3)", lineHeight: 1 }}>+</span>
+      <span
+        style={{
+          writingMode: "vertical-rl",
+          transform: "rotate(180deg)",
+          fontSize: "10px",
+          color: "rgba(255,255,255,0.4)",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          margin: "4px 0",
+        }}
+      >
+        New
+      </span>
     </Link>
   )
 }
 
 // ─── BookshelfSVG ─────────────────────────────────────────────────────────────
+// Used only by the empty state below.
 
 function BookshelfSVG({ isEmpty, storyCount }: { isEmpty: boolean; storyCount: number }) {
   const spineColors = ["#7c3aed","#f59e0b","#0d9488","#ef4444","#1d4ed8","#16a34a","#ec4899","#6b7280"]
@@ -170,6 +186,8 @@ function BookshelfSVG({ isEmpty, storyCount }: { isEmpty: boolean; storyCount: n
 
 // ─── StoryLibrary ─────────────────────────────────────────────────────────────
 
+const BOOKS_PER_SHELF = 5
+
 interface StoryLibraryProps {
   stories: Story[]
   profiles: KidProfile[]    // for child filter labels + resolving childName on cards
@@ -179,6 +197,7 @@ interface StoryLibraryProps {
 export default function StoryLibrary({ stories, profiles, templates }: StoryLibraryProps) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
+  const [activeBookId, setActiveBookId] = useState<string | null>(null)
   // Read on first render to decide whether to skip the enter animation
   const [skipEnter] = useState(() => {
     if (typeof window === "undefined") return false
@@ -211,11 +230,19 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
     [stories, filters, sort]
   )
 
-  const [now] = useState(() => Date.now())
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.id, p.name])),
     [profiles]
   )
+
+  // Split visible stories into rows of BOOKS_PER_SHELF
+  const shelfRows = useMemo(() => {
+    const rows: Story[][] = []
+    for (let i = 0; i < visibleStories.length; i += BOOKS_PER_SHELF) {
+      rows.push(visibleStories.slice(i, i + BOOKS_PER_SHELF))
+    }
+    return rows
+  }, [visibleStories])
 
   const activeFilterCount = Object.entries(filters).filter(
     ([, v]) => v !== "all"
@@ -231,7 +258,7 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
       {/* Header */}
       <div className="mb-5">
         <div className="flex items-baseline justify-between">
-          <h1 className="text-xl font-semibold" style={{ color: "#2e1065" }}>Your story shelf</h1>
+          <h1 className="font-serif text-xl font-semibold" style={{ color: "#c8852a" }}>Your story shelf</h1>
           {stories.length > 0 && (
             <span className="text-sm text-muted-foreground">
               {visibleStories.length} {visibleStories.length === 1 ? "story" : "stories"}
@@ -253,76 +280,200 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
           entry in FilterState + filters.ts. The applyFiltersAndSort function
           handles the logic. The sort dropdown always lives at the end.
       ──────────────────────────────────────────────────────────────────── */}
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <FilterDropdown
-          label="All kids"
-          value={filters.childId}
-          options={childOptions}
-          onChange={(v) => setFilter("childId", v)}
-        />
-        <FilterDropdown
-          label="Any date"
-          value={filters.dateRange}
-          options={DATE_RANGE_OPTIONS}
-          onChange={(v) => setFilter("dateRange", v)}
-        />
-        <FilterDropdown
-          label="Any length"
-          value={filters.length}
-          options={LENGTH_OPTIONS}
-          onChange={(v) => setFilter("length", v)}
-        />
-        {templates.length > 0 && (
-          <FilterDropdown
-            label="All templates"
-            value={filters.template}
-            options={templateOptions}
-            onChange={(v) => setFilter("template", v)}
-          />
-        )}
-
-        {/* Spacer pushes sort to the right */}
-        <div className="flex-1" />
-
-        <SortDropdown value={sort} onChange={setSort} />
-
-        {activeFilterCount > 0 && (
-          <button
-            onClick={clearFilters}
-            className="rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Bookshelf — shown when stories exist */}
       {stories.length > 0 && (
-        <div className="mb-5 flex justify-center">
-          <BookshelfSVG isEmpty={false} storyCount={visibleStories.length} />
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <FilterDropdown
+            label="All kids"
+            value={filters.childId}
+            options={childOptions}
+            onChange={(v) => setFilter("childId", v)}
+          />
+          <FilterDropdown
+            label="Any date"
+            value={filters.dateRange}
+            options={DATE_RANGE_OPTIONS}
+            onChange={(v) => setFilter("dateRange", v)}
+          />
+          <FilterDropdown
+            label="Any length"
+            value={filters.length}
+            options={LENGTH_OPTIONS}
+            onChange={(v) => setFilter("length", v)}
+          />
+          {templates.length > 0 && (
+            <FilterDropdown
+              label="All templates"
+              value={filters.template}
+              options={templateOptions}
+              onChange={(v) => setFilter("template", v)}
+            />
+          )}
+
+          {/* Spacer pushes sort to the right */}
+          <div className="flex-1" />
+
+          <SortDropdown value={sort} onChange={setSort} />
+
+          {activeFilterCount > 0 && (
+            <button
+              onClick={clearFilters}
+              className="rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted"
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
 
-      {/* Book grid */}
-      {visibleStories.length === 0 && stories.length > 0 ? (
+      {/* Filter mismatch — stories exist but none match */}
+      {visibleStories.length === 0 && stories.length > 0 && (
         <div className="py-16 text-center text-sm text-muted-foreground">
           No stories match these filters.{" "}
           <button onClick={clearFilters} className="underline hover:text-foreground">
             Clear filters
           </button>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-          {visibleStories.map((story) => (
-            <BookCard
-              key={story.id}
-              story={story}
-              childName={story.kid_profile_id ? profileMap[story.kid_profile_id] : undefined}
-              isNew={now - new Date(story.created_at).getTime() < 24 * 60 * 60 * 1000}
-            />
-          ))}
-          <NewStorySlot />
-        </div>
+      )}
+
+      {/* Bookshelf — rendered when there are visible stories */}
+      {visibleStories.length > 0 && (
+        <>
+          <style>{`
+            @keyframes lampPulse {
+              0%, 100% { filter: drop-shadow(0 0 8px rgba(251,191,36,0.8)) drop-shadow(0 0 16px rgba(251,191,36,0.4)); }
+              50% { filter: drop-shadow(0 0 12px rgba(251,191,36,1)) drop-shadow(0 0 24px rgba(251,191,36,0.6)); }
+            }
+            .lamp-pulse { animation: lampPulse 2s ease-in-out infinite; }
+            .book-wrap:hover .title-popover,
+            .book-wrap.active .title-popover {
+              opacity: 1 !important;
+              transform: translateX(-50%) translateY(0) !important;
+              pointer-events: all !important;
+            }
+            .book-wrap:hover .book-spine,
+            .book-wrap.active .book-spine {
+              transform: translateY(-8px);
+            }
+            .title-popover::before {
+              content: '';
+              position: absolute;
+              top: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              border: 7px solid transparent;
+              border-top-color: rgba(200,133,42,0.4);
+            }
+            .title-popover::after {
+              content: '';
+              position: absolute;
+              top: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              border: 6px solid transparent;
+              border-top-color: #1c1209;
+            }
+          `}</style>
+
+          {/* Outer wrapper reserves space above the dark frame for Luma */}
+          <div style={{ paddingTop: "70px", position: "relative" }}>
+            <div
+              style={{
+                background: "#2a1a0a",
+                borderRadius: "12px",
+                paddingLeft: "16px",
+                paddingRight: "16px",
+                paddingBottom: "16px",
+              }}
+              onClick={() => setActiveBookId(null)}
+            >
+              {/* Top frame with Luma sitting on its top edge */}
+              <div
+                style={{
+                  position: "relative",
+                  height: "60px",
+                  background: "linear-gradient(180deg, #5c3820 0%, #3d2210 100%)",
+                  borderRadius: "6px 6px 0 0",
+                  marginBottom: "8px",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/luma-sitting-no-background.png"
+                  alt="Luma the story genie"
+                  style={{
+                    position: "absolute",
+                    top: "-60px",
+                    left: "55%",
+                    transform: "translateX(-50%)",
+                    height: "120px",
+                    width: "auto",
+                    zIndex: 10,
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
+
+              {/* Shelf rows */}
+              {shelfRows.map((rowStories, rowIdx) => {
+                const isLastRow = rowIdx === shelfRows.length - 1
+                return (
+                  <div key={rowIdx} style={{ marginBottom: isLastRow ? 0 : "8px" }}>
+                    {/* Books row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-end",
+                        gap: "4px",
+                        background: "linear-gradient(180deg, #3d2410 0%, #2e1a0a 100%)",
+                        borderRadius: "6px 6px 0 0",
+                        minHeight: "130px",
+                        padding: "14px 8px 0",
+                      }}
+                    >
+                      {rowStories.map((story) => (
+                        <BookCard
+                          key={story.id}
+                          story={story}
+                          childName={story.kid_profile_id ? profileMap[story.kid_profile_id] : undefined}
+                          isActive={activeBookId === story.id}
+                          onActivate={() => setActiveBookId(story.id)}
+                          onDismiss={() => setActiveBookId(null)}
+                        />
+                      ))}
+                      {isLastRow && (
+                        <>
+                          {/* Genie lamp */}
+                          <span
+                            className="lamp-pulse"
+                            style={{
+                              fontSize: "28px",
+                              alignSelf: "flex-end",
+                              paddingBottom: "8px",
+                              display: "inline-flex",
+                            }}
+                            aria-hidden="true"
+                          >
+                            🪔
+                          </span>
+                          <NewStorySlot />
+                        </>
+                      )}
+                    </div>
+                    {/* Shelf edge */}
+                    <div
+                      style={{
+                        height: "14px",
+                        background: "linear-gradient(180deg, #c8852a 0%, #a06820 60%, #7a5018 100%)",
+                        boxShadow: "inset 0 -3px 6px rgba(0,0,0,0.4), inset 0 2px 3px rgba(255,220,150,0.15)",
+                        borderRadius: "0 0 4px 4px",
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Empty state — no stories at all */}
