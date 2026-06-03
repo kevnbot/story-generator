@@ -49,12 +49,10 @@ export default async function LibraryPage() {
   }))
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <StoryLibrary
-        stories={resolvedStories}
-        profiles={profiles}
-        templates={templates}
-      />
-    </main>
+    <StoryLibrary
+      stories={resolvedStories}
+      profiles={profiles}
+      templates={templates}
+    />
   )
 }

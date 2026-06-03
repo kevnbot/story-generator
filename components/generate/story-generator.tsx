@@ -323,7 +323,7 @@ export function StoryGenerator({
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6 space-y-6 pb-24">
+    <div className="max-w-lg mx-auto space-y-6 pb-24">
       <div className="flex items-center justify-between gap-4 mb-2">
         <div>
           <p className="text-sm font-medium" style={{ color: "#7c3aed" }}>{greetingWithName} ✦</p>

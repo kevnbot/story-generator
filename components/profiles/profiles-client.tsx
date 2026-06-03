@@ -198,7 +198,7 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-6 px-4 py-6">
+    <div className="max-w-lg mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Characters</h1>

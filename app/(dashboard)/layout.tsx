@@ -33,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         credits={account?.credit_balance ?? 0}
         isAdmin={hasAdminAccess}
       />
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 pb-20 md:pb-6">{children}</main>
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 pt-4 pb-20 md:pb-6">{children}</main>
     </div>
   )
 }
