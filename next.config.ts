@@ -3,6 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   images: {
+    imageSizes: [48, 64, 72, 96, 128, 256],
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co" },
       { protocol: "https", hostname: "fal.media" },
