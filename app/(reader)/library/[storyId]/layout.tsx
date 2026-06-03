@@ -1,14 +1,10 @@
 import Link from "next/link"
 
-export default async function StoryReaderLayout({
+export default function StoryReaderLayout({
   children,
-  params,
 }: {
   children: React.ReactNode
-  params: Promise<{ storyId: string }>
 }) {
-  const { storyId } = await params
-
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#1c0f35" }}>
       <nav
@@ -20,12 +16,6 @@ export default async function StoryReaderLayout({
           className="text-sm text-white/60 transition-colors hover:text-white"
         >
           ← Library
-        </Link>
-        <Link
-          href={`/generate?parentStoryId=${storyId}`}
-          className="text-sm text-white/60 transition-colors hover:text-white"
-        >
-          + New version
         </Link>
       </nav>
       <div className="flex-1 overflow-y-auto">
