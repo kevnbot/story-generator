@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { StoryGenerator } from "@/components/generate/story-generator"
+import { createSignedImageUrlsMap } from "@/lib/storage/images"
 
 export default async function GeneratePage({
   searchParams,
@@ -58,6 +59,29 @@ export default async function GeneratePage({
       .order("sort_order", { ascending: true }),
   ])
 
+  const profiles = profilesResult.data ?? []
+
+  // Resolve signed thumbnail URLs for all profile reference images
+  const allPaths = profiles.flatMap(p => [
+    p.combined_reference_path,
+    p.character_illustration_path,
+    p.reference_image_path,
+  ]).filter((path): path is string => Boolean(path))
+
+  const signedUrlsMap = allPaths.length > 0
+    ? await createSignedImageUrlsMap(service, allPaths)
+    : new Map<string, string>()
+
+  // Build a profileId → thumbnail URL map, preferring combined > illustration > reference
+  const profileThumbnailUrls: Record<string, string> = {}
+  for (const p of profiles) {
+    const bestPath = p.combined_reference_path ?? p.character_illustration_path ?? p.reference_image_path
+    if (bestPath) {
+      const url = signedUrlsMap.get(bestPath)
+      if (url) profileThumbnailUrls[p.id] = url
+    }
+  }
+
   const parent = parentResult.data
   const defaultProfileIds: string[] = parent
     ? (parent.generation_params?.kid_profile_ids ?? (parent.generation_params?.kid_profile_id ? [parent.generation_params.kid_profile_id] : []))
@@ -65,7 +89,7 @@ export default async function GeneratePage({
 
   return (
     <StoryGenerator
-      profiles={profilesResult.data ?? []}
+      profiles={profiles}
       artStyles={artStylesResult.data ?? []}
       storyTypes={storyTypesResult.data ?? []}
       credits={accountResult.data?.credit_balance ?? 0}
@@ -73,6 +97,7 @@ export default async function GeneratePage({
       parentStoryId={parent?.id}
       parentStoryTitle={parent?.title}
       defaultProfileIds={defaultProfileIds}
+      profileThumbnailUrls={profileThumbnailUrls}
     />
   )
 }

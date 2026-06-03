@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ChevronLeft, ChevronRight, Download, ScrollText } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download } from "lucide-react"
 import { Story, StoryImage } from "@/types"
 import PromptModal from "./PromptModal"
 
@@ -246,13 +246,6 @@ export default function BookReader({ story }: { story: Story }) {
           >
             <Download className="h-4 w-4" />
             Download PDF
-          </button>
-          <button
-            onClick={() => setShowPrompts(true)}
-            className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
-          >
-            <ScrollText className="h-4 w-4" />
-            View Prompt
           </button>
         </div>
       </div>

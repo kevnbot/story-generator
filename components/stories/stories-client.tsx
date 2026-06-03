@@ -173,18 +173,13 @@ export function StoriesClient({ stories }: { stories: Story[] }) {
               <StoryCard key={v.id} story={v} isVersion onDelete={handleDelete} />
             ))}
 
-            <div className="flex items-center gap-2 pl-1">
-              <Button variant="outline" size="sm" asChild>
-                <a href={`/generate?parentStoryId=${root.id}`}>
-                  + New Version
-                </a>
-              </Button>
-              {versions.length > 0 && (
+            {versions.length > 0 && (
+              <div className="flex items-center gap-2 pl-1">
                 <span className="text-xs text-muted-foreground">
                   {versions.length} version{versions.length !== 1 ? "s" : ""}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

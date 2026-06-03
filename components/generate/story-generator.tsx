@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { formatAge } from "@/lib/ai/prompt-builder"
+import { Info } from "lucide-react"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensity, type TextDensityKey } from "@/lib/story-density"
 import { FEATURES } from "@/lib/config/features"
@@ -45,6 +45,8 @@ interface StoryGeneratorProps {
   parentStoryId?: string
   parentStoryTitle?: string
   defaultProfileIds?: string[]
+  profileThumbnailUrls?: Record<string, string>
+  userName?: string | null
 }
 
 type StreamChunk =
@@ -53,16 +55,52 @@ type StreamChunk =
   | { type: "done"; storyId: string | null; title: string; hasImages: boolean }
   | { type: "error"; message: string }
 
-const STORY_TYPE_EMOJI: Record<string, string> = {
-  bedtime: "🌙",
-  fairytale: "✨",
-  adventure: "🗺️",
-  silly: "😄",
-  mystery: "🔍",
-  special_event: "🎉",
-  educational: "📚",
-  custom: "🎨",
+// ─── InfoPopover ──────────────────────────────────────────────────────────────
+// Renders an (i) icon that shows a tooltip on click (mobile-friendly).
+
+function InfoPopover({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="text-muted-foreground hover:text-foreground transition-colors ml-1.5"
+        aria-label="More information"
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-6 z-20 w-56 rounded-lg border border-border bg-popover p-3 shadow-lg text-xs text-popover-foreground leading-relaxed">
+          {text}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute top-1.5 right-2 text-muted-foreground hover:text-foreground text-[10px]"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
+
+// ─── StoryGenerator ───────────────────────────────────────────────────────────
 
 export function StoryGenerator({
   profiles,
@@ -73,7 +111,13 @@ export function StoryGenerator({
   parentStoryId,
   parentStoryTitle,
   defaultProfileIds = [],
+  profileThumbnailUrls = {},
+  userName,
 }: StoryGeneratorProps) {
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+  const greetingWithName = userName ? `${greeting}, ${userName.split(" ")[0]}` : greeting
+
   const eligibleProfileIds = profiles.filter(hasIllustration).map(p => p.id)
   const initialIds = defaultProfileIds.length > 0
     ? new Set(FEATURES.multiProfile ? defaultProfileIds : defaultProfileIds.slice(0, 1))
@@ -94,16 +138,11 @@ export function StoryGenerator({
   const [storyTitle, setStoryTitle] = useState("")
   const [storyId, setStoryId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
-  const [lumaState, setLumaState] = useState<"idle" | "lean" | "nod">("idle")
-  const lumaLearnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Clean up debounce timer on unmount
-  useEffect(() => () => { if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current) }, [])
 
   const lengthConfig = STORY_LENGTHS[storyLength]
   const imageCost = includeImages && imagesAvailable ? lengthConfig.imageCost : 0
   const creditsNeeded = 1 + imageCost
-  const canGenerate = selectedIds.size > 0 && !!storyTypeId && credits >= creditsNeeded && status !== "generating" && lumaState !== "nod"
+  const canGenerate = selectedIds.size > 0 && !!storyTypeId && credits >= creditsNeeded && status !== "generating"
 
   const isIllustrating = statusMessage.toLowerCase().startsWith("generating") ||
     statusMessage.toLowerCase().startsWith("illustrating")
@@ -212,30 +251,6 @@ export function StoryGenerator({
     }
   }
 
-  function handleGenerate() {
-    if (!canGenerate) return
-    setLumaState("nod")
-    setTimeout(() => {
-      setLumaState("idle")
-      generate()
-    }, 700)
-  }
-
-  function handleStoryDescriptionChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setStoryDescription(e.target.value)
-    if (lumaState === "nod") return
-    setLumaState("lean")
-    if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current)
-    lumaLearnTimer.current = setTimeout(() => setLumaState("idle"), 1500)
-  }
-
-  function handleStoryDescriptionFocus() {
-    if (lumaState === "nod") return
-    setLumaState("lean")
-    if (lumaLearnTimer.current) clearTimeout(lumaLearnTimer.current)
-    lumaLearnTimer.current = setTimeout(() => setLumaState("idle"), 1500)
-  }
-
   if (profiles.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] text-center gap-4">
@@ -245,537 +260,323 @@ export function StoryGenerator({
           Profiles let us personalize the story with your child&apos;s name, age, and favorite things.
         </p>
         <Button asChild>
-          <a href="/profiles">Add Profile</a>
+          <a href="/profile/new">Create a profile</a>
         </Button>
       </div>
     )
   }
 
-  const selectionLabel = selectedIds.size === 0
-    ? "Select at least one"
-    : selectedIds.size === 1
-      ? profiles.find(p => selectedIds.has(p.id))?.name
-      : `${selectedIds.size} kids`
+  if (status === "generating") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center px-4">
+        <div className="text-5xl animate-bounce">✨</div>
+        <div>
+          <h2 className="text-xl font-semibold mb-1">
+            {isIllustrating ? "Bringing your story to life..." : "Writing your story..."}
+          </h2>
+          {statusMessage && (
+            <p className="text-sm text-muted-foreground">{statusMessage}</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (status === "done" && storyId) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center px-4">
+        <div className="text-5xl">🎉</div>
+        <div>
+          <h2 className="text-xl font-semibold mb-1">{storyTitle}</h2>
+          <p className="text-sm text-muted-foreground">Your story is ready!</p>
+        </div>
+        <div className="flex gap-3">
+          <Button asChild>
+            <a href={`/library/${storyId}`}>Read it now</a>
+          </Button>
+          <Button variant="outline" onClick={reset}>Make another</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 text-center px-4">
+        <div className="text-5xl">😔</div>
+        <div>
+          <h2 className="text-xl font-semibold mb-1">Something went wrong</h2>
+          <p className="text-sm text-muted-foreground">{errorMsg}</p>
+        </div>
+        <Button onClick={reset}>Try again</Button>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ maxWidth: "480px", margin: "0 auto", paddingBottom: "8px" }}>
-      <style>{`
-        @keyframes luma-float {
-          0%, 100% { transform: translateY(0); }
-          50%       { transform: translateY(-4px); }
-        }
-        @keyframes luma-lean {
-          0%, 100% { transform: rotate(0deg) translateY(0); }
-          50%       { transform: rotate(-8deg) translateY(-3px); }
-        }
-        @keyframes genie-nod {
-          0%   { transform: rotate(0deg); }
-          15%  { transform: rotate(-6deg); }
-          30%  { transform: rotate(4deg); }
-          50%  { transform: rotate(-10deg); }
-          65%  { transform: rotate(6deg); }
-          80%  { transform: rotate(-4deg); }
-          100% { transform: rotate(0deg); }
-        }
-        @keyframes arms-cross {
-          0%, 100% { transform: scaleX(1); }
-          40%, 60% { transform: scaleX(0.82); }
-        }
-        @keyframes btn-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0); }
-          50%       { box-shadow: 0 0 0 4px rgba(124,58,237,0.18); }
-        }
-        @keyframes blink {
-          0%, 90%, 100% { transform: scaleY(1); }
-          95%           { transform: scaleY(0.08); }
-        }
-        .luma-gen-idle   { animation: luma-float 3s ease-in-out infinite; }
-        .luma-gen-lean   { animation: luma-lean 3s ease-in-out infinite; }
-        .luma-gen-nod    { animation: genie-nod 0.7s ease-out forwards; }
-        .luma-gen-arms   { animation: arms-cross 0.7s ease-out forwards; }
-        .luma-gen-blink  { animation: blink 4s ease-in-out 1s infinite; transform-origin: center center; }
-        .luma-btn-glow   { animation: btn-glow 2.5s ease-in-out infinite; }
-      `}</style>
-
-      {/* Page header */}
-      <div className="mb-6">
-        <p className="text-sm" style={{ color: "#a78bfa" }}>
-          {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"} ✦
-        </p>
-        <h1 className="text-xl font-semibold mt-0.5" style={{ color: "#2e1065" }}>
-          What&apos;s your wish tonight?
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: "#a78bfa" }}>
-          Your genie is ready to make magic
-        </p>
+    <div className="max-w-lg mx-auto px-4 py-6 space-y-6 pb-24">
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <div>
+          <p className="text-sm font-medium" style={{ color: "#7c3aed" }}>{greetingWithName} ✦</p>
+          <h1 className="text-2xl font-semibold text-foreground mt-0.5">What&apos;s your wish tonight?</h1>
+          <p className="text-sm mt-1" style={{ color: "#a78bfa" }}>Your genie is ready to make magic</p>
+        </div>
+        <img src="/luma.png" alt="" className="w-24 h-24 object-contain flex-shrink-0 drop-shadow-sm" aria-hidden="true" />
       </div>
 
-      {/* Loading state */}
-      {status === "generating" && (
-        <div className="rounded-xl border bg-card p-10 flex flex-col items-center text-center gap-8">
-          <div className="flex gap-3 text-4xl">
-            <span className="animate-bounce [animation-delay:0ms]">
-              {isIllustrating ? "🎨" : "✏️"}
-            </span>
-            <span className="animate-bounce [animation-delay:150ms]">
-              {isIllustrating ? "🖼️" : "📖"}
-            </span>
-            <span className="animate-bounce [animation-delay:300ms]">
-              {isIllustrating ? "✨" : "⭐"}
-            </span>
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold">
-              {isIllustrating ? "Creating the illustrations…" : "Writing your story…"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {isIllustrating
-                ? "Our AI artist is painting each page — almost there!"
-                : "Our storyteller is crafting a unique adventure for your little one."}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {[0, 1, 2, 3].map(i => (
-              <div
-                key={i}
-                className="w-2 h-2 rounded-full bg-primary animate-bounce"
-                style={{ animationDelay: `${i * 120}ms` }}
-              />
+      {parentStoryTitle && (
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          Continuing from: <span className="font-medium text-foreground">{parentStoryTitle}</span>
+        </div>
+      )}
+
+      {/* ── 1. Character ── */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wide" style={{ color: "#a78bfa" }}>Character</label>
+        <div className="flex flex-wrap gap-2">
+          {profiles.map(profile => {
+            const isDisabled = !hasIllustration(profile)
+            const isSelected = selectedIds.has(profile.id)
+            const thumbnailUrl = profileThumbnailUrls[profile.id]
+
+            return (
+              <button
+                key={profile.id}
+                type="button"
+                onClick={() => toggleProfile(profile.id)}
+                disabled={isDisabled}
+                aria-pressed={isSelected}
+                className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  isDisabled
+                    ? "opacity-40 cursor-not-allowed border-input bg-background"
+                    : isSelected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-input bg-background hover:bg-accent"
+                }`}
+              >
+                {/* Thumbnail */}
+                <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                  {thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbnailUrl}
+                      alt={profile.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl select-none">🧒</span>
+                  )}
+                </div>
+                {/* Name only */}
+                <span className="text-xs font-medium leading-tight max-w-[64px] text-center truncate">
+                  {profile.name}
+                </span>
+                {isDisabled && (
+                  <span className="text-[9px] text-amber-600 leading-tight text-center">
+                    Needs illustration
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        {FEATURES.multiProfile && profiles.length > 1 && (
+          <p className="text-xs text-muted-foreground">
+            Select multiple kids to have them all appear in the story together.
+          </p>
+        )}
+      </div>
+
+      {/* ── 2. Story Type ── */}
+      {storyTypes.length > 0 && (
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: "#a78bfa" }}>Story type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {storyTypes.map(type => (
+              <button
+                key={type.id}
+                type="button"
+                onClick={() => {
+                  setStoryTypeId(type.id)
+                  setStoryTypeExtraInput("")
+                }}
+                title={type.description}
+                className={`group relative p-3 rounded-lg border text-left transition-colors ${
+                  storyTypeId === type.id
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input bg-background hover:bg-accent"
+                }`}
+              >
+                <div className="font-medium text-sm">{type.name}</div>
+                {/* Description shown on hover via a tooltip-style overlay */}
+                <div className="pointer-events-none absolute inset-x-0 top-full mt-1.5 z-10 hidden group-hover:block">
+                  <div className="mx-1 rounded-lg border border-border bg-popover px-3 py-2 shadow-md text-xs text-popover-foreground leading-relaxed">
+                    {type.description}
+                  </div>
+                </div>
+              </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Done state */}
-      {status === "done" && (
-        <div className="rounded-xl border bg-card p-10 flex flex-col items-center text-center gap-6">
-          <div className="text-5xl">🎉</div>
-          <div className="space-y-1.5">
-            <h2 className="text-2xl font-bold">{storyTitle || "Your story is ready!"}</h2>
-            <p className="text-sm text-muted-foreground">
-              Saved to your library — read it any time.
-            </p>
-          </div>
-          <div className="flex gap-3 flex-wrap justify-center">
-            {storyId && (
-              <Button size="lg" asChild>
-                <a href={`/library/${storyId}`}>Read Story</a>
-              </Button>
-            )}
-            <Button variant="outline" size="lg" onClick={reset}>
-              Generate Another
-            </Button>
-          </div>
+      {/* Conditional extra input */}
+      {selectedStoryType?.extra_input_label && (
+        <div className="space-y-1.5">
+          <Label htmlFor="story-type-extra">{selectedStoryType.extra_input_label}</Label>
+          <Input
+            id="story-type-extra"
+            placeholder={selectedStoryType.extra_input_hint ?? ""}
+            value={storyTypeExtraInput}
+            onChange={e => setStoryTypeExtraInput(e.target.value)}
+          />
         </div>
       )}
 
-      {/* Error state */}
-      {status === "error" && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          {errorMsg}
+      {/* ── 3. Story Length ── */}
+      <div className="space-y-2">
+        <div className="flex items-center">
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: "#a78bfa" }}>Story length</label>
+          <InfoPopover text="Controls the number of pages in the story. Short = 4 pages, Medium = 6 pages, Long = 8 pages. Longer stories also use more image wishes if illustrations are enabled." />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {(Object.entries(STORY_LENGTHS) as [StoryLength, typeof STORY_LENGTHS[StoryLength]][]).map(([key, cfg]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStoryLength(key)}
+              className={`p-3 rounded-lg border text-left transition-colors ${
+                storyLength === key
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-input bg-background hover:bg-accent"
+              }`}
+            >
+              <div className="font-medium text-sm">{cfg.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{cfg.pages} pages</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 4. Reading Style ── */}
+      <div className="space-y-2">
+        <div className="flex items-center">
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: "#a78bfa" }}>Reading style</label>
+          <InfoPopover text="Sets how much text appears on each page. Early Reader uses short, simple sentences great for young kids reading along. Read Together has more detail for reading with a parent. Read Aloud is richly written for a parent to narrate expressively." />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {(Object.values(TEXT_DENSITIES) as TextDensity[]).map(density => (
+            <button
+              key={density.id}
+              type="button"
+              onClick={() => setTextDensity(density.id)}
+              className={`p-3 rounded-lg border text-left transition-colors ${
+                textDensity === density.id
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-input bg-background hover:bg-accent"
+              }`}
+            >
+              <div className="font-medium text-sm">{density.name}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 5. Title ── */}
+      <div className="space-y-1.5">
+        <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
+        <Input
+          id="custom-title"
+          placeholder="Leave blank to auto-generate"
+          value={customTitle}
+          onChange={e => setCustomTitle(e.target.value)}
+        />
+      </div>
+
+      {/* ── 6. Your Story Idea ── */}
+      <div className="space-y-1.5">
+        <Label htmlFor="story-description">Your story idea</Label>
+        <textarea
+          id="story-description"
+          rows={3}
+          placeholder="Describe what happens in the story — or leave blank and let the genie surprise you..."
+          value={storyDescription}
+          onChange={e => setStoryDescription(e.target.value)}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+        />
+      </div>
+
+      {/* ── 7. Include Images ── */}
+      {imagesAvailable && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Include illustrations</span>
           <button
             type="button"
-            onClick={() => { setStatus("idle"); setErrorMsg("") }}
-            className="ml-2 underline"
+            onClick={() => setIncludeImages(v => !v)}
+            aria-pressed={includeImages}
+            aria-label="Include illustrations"
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+              includeImages ? "bg-primary" : "bg-muted-foreground/30"
+            }`}
           >
-            Dismiss
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                includeImages ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
           </button>
         </div>
       )}
 
-      {/* Form — hidden while generating or done */}
-      {status === "idle" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-
-          {/* Revision mode banner */}
-          {parentStoryTitle && (
-            <div style={{ backgroundColor: "#f5f0ff", border: "1.5px solid #e9d5ff", borderRadius: "12px", padding: "12px 14px" }}>
-              <p className="text-sm font-medium" style={{ color: "#6d28d9" }}>Revising: {parentStoryTitle}</p>
-              <p className="text-xs mt-0.5" style={{ color: "#a78bfa" }}>Your genie will craft a new version with your changes.</p>
-            </div>
-          )}
-
-          {/* Character selector */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", margin: 0 }}>
-                {FEATURES.multiProfile ? "Characters" : "Character"}
-              </p>
-              {profiles.length > 1 && (
-                <span className="text-xs text-muted-foreground">{selectionLabel}</span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {profiles.map(p => {
-                const isSelected = selectedIds.has(p.id)
-                const isDisabled = !hasIllustration(p)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => toggleProfile(p.id)}
-                    disabled={isDisabled}
-                    title={isDisabled ? "Illustration needed — visit profile" : undefined}
-                    style={{
-                      position: "relative",
-                      backgroundColor: isSelected ? "#f5f0ff" : "#ffffff",
-                      border: isSelected ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
-                      borderRadius: "11px",
-                      padding: "9px 11px",
-                      textAlign: "left",
-                      ...(isDisabled ? { opacity: 0.45, cursor: "not-allowed" } : {}),
-                    }}
-                  >
-                    {!isDisabled && profiles.length > 1 && (
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: "8px",
-                          right: "8px",
-                          width: "16px",
-                          height: "16px",
-                          borderRadius: "4px",
-                          border: isSelected ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
-                          backgroundColor: isSelected ? "#7c3aed" : "transparent",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "10px",
-                          fontWeight: "bold",
-                          color: "#ffffff",
-                        }}
-                      >
-                        {isSelected ? "✓" : ""}
-                      </span>
-                    )}
-                    <div className="font-medium text-sm pr-5">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{formatAge(p.age, p.age_months ?? 0)}</div>
-                    {isDisabled && (
-                      <div className="text-xs text-amber-600 mt-0.5">Illustration needed</div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            {FEATURES.multiProfile && profiles.length > 1 && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Select multiple kids to have them all appear in the story together.
-              </p>
-            )}
+      {/* ── 8. Art Style ── */}
+      {artStyles.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center">
+            <label className="text-xs font-medium uppercase tracking-wide" style={{ color: "#a78bfa" }}>Art style</label>
+            <InfoPopover text="Changes the illustration style used for your story's images. Each style gives the pictures a different look and feel — from soft watercolors to bold cartoon lines." />
           </div>
-
-          {/* Story type selector */}
-          {storyTypes.length > 0 && (
-            <div>
-              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
-                Story type
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {storyTypes.map(type => (
-                  <button
-                    key={type.id}
-                    type="button"
-                    onClick={() => {
-                      setStoryTypeId(type.id)
-                      setStoryTypeExtraInput("")
-                    }}
-                    style={{
-                      backgroundColor: storyTypeId === type.id ? "#f5f0ff" : "#ffffff",
-                      border: storyTypeId === type.id ? "1.5px solid #7c3aed" : "1.5px solid #e9d5ff",
-                      borderRadius: "10px",
-                      padding: "10px 12px",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div className="font-medium text-sm">{STORY_TYPE_EMOJI[type.id] ?? "📖"} {type.name}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{type.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Conditional extra input for story types that require it */}
-          {selectedStoryType?.extra_input_label && (
-            <div>
-              <Label htmlFor="story-type-extra">{selectedStoryType.extra_input_label}</Label>
-              <Input
-                id="story-type-extra"
-                placeholder={selectedStoryType.extra_input_hint ?? ""}
-                value={storyTypeExtraInput}
-                onChange={e => setStoryTypeExtraInput(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Title */}
-          <div>
-            <Label htmlFor="custom-title">Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
-            <Input
-              id="custom-title"
-              placeholder="Leave blank to auto-generate"
-              value={customTitle}
-              onChange={e => setCustomTitle(e.target.value)}
-            />
-          </div>
-
-          {/* Story length */}
-          <div>
-            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
-              Story length
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(Object.entries(STORY_LENGTHS) as [StoryLength, typeof STORY_LENGTHS[StoryLength]][]).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setStoryLength(key)}
-                  style={storyLength === key ? {
-                    backgroundColor: "#7c3aed",
-                    color: "#ffffff",
-                    border: "1.5px solid #7c3aed",
-                    borderRadius: "20px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                  } : {
-                    backgroundColor: "#ffffff",
-                    color: "#7c3aed",
-                    border: "1.5px solid #e9d5ff",
-                    borderRadius: "20px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                  }}
-                >
-                  {cfg.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Text density */}
-          <div>
-            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
-              Reading style
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(Object.values(TEXT_DENSITIES) as TextDensity[]).map(density => (
-                <button
-                  key={density.id}
-                  type="button"
-                  onClick={() => setTextDensity(density.id)}
-                  style={textDensity === density.id ? {
-                    backgroundColor: "#7c3aed",
-                    color: "#ffffff",
-                    border: "1.5px solid #7c3aed",
-                    borderRadius: "20px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                  } : {
-                    backgroundColor: "#ffffff",
-                    color: "#7c3aed",
-                    border: "1.5px solid #e9d5ff",
-                    borderRadius: "20px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                  }}
-                >
-                  {density.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Art style */}
-          {artStyles.length > 0 && (
-            <div>
-              <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
-                Art style
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {artStyles.map(style => (
-                  <button
-                    key={style.id}
-                    type="button"
-                    onClick={() => setArtStyleId(style.id)}
-                    style={artStyleId === style.id ? {
-                      backgroundColor: "#7c3aed",
-                      color: "#ffffff",
-                      border: "1.5px solid #7c3aed",
-                      borderRadius: "20px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      fontWeight: 500,
-                    } : {
-                      backgroundColor: "#ffffff",
-                      color: "#7c3aed",
-                      border: "1.5px solid #e9d5ff",
-                      borderRadius: "20px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                    }}
-                  >
-                    {style.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Story idea */}
-          <div>
-            <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.6px", textTransform: "uppercase", color: "#c4b5fd", marginBottom: "8px" }}>
-              Your story idea
-            </p>
-            <textarea
-              id="story-description"
-              aria-label="What should the story be about?"
-              rows={3}
-              placeholder="e.g. going to the dentist for the first time, a dragon who is afraid of the dark, finding a secret door in the garden…"
-              value={storyDescription}
-              onChange={handleStoryDescriptionChange}
-              onFocus={handleStoryDescriptionFocus}
-              style={{
-                width: "100%",
-                borderRadius: "12px",
-                border: "1.5px solid #e9d5ff",
-                padding: "12px",
-                fontSize: "14px",
-                backgroundColor: "#ffffff",
-                color: "#2e1065",
-                resize: "vertical",
-                outline: "none",
-              }}
-            />
-          </div>
-
-          {/* Feedback — only shown when creating a version */}
-          {parentStoryId && (
-            <div>
-              <Label htmlFor="feedback">Changes or feedback <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <textarea
-                id="feedback"
-                rows={3}
-                placeholder="Leave blank to generate a fresh version, or describe what you'd like changed..."
-                value={feedback}
-                onChange={e => setFeedback(e.target.value)}
-                style={{
-                  width: "100%",
-                  borderRadius: "12px",
-                  border: "1.5px solid #e9d5ff",
-                  padding: "12px",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  color: "#2e1065",
-                  resize: "vertical",
-                  outline: "none",
-                }}
-              />
-            </div>
-          )}
-
-          {/* Images toggle */}
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <div className="text-sm font-medium">Include images</div>
-              <div className="text-xs text-muted-foreground">
-                {imagesAvailable
-                  ? `+${lengthConfig.imageCost} credit${lengthConfig.imageCost !== 1 ? "s" : ""} — ${lengthConfig.imageCount} AI-generated illustrations`
-                  : "Image generation is not configured"}
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-label="Include images"
-              aria-checked={includeImages}
-              onClick={() => imagesAvailable && setIncludeImages(v => !v)}
-              disabled={!imagesAvailable}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
-                includeImages ? "bg-primary" : "bg-input"
-              } ${!imagesAvailable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
-                  includeImages ? "translate-x-6" : "translate-x-1"
+          <div className="grid grid-cols-2 gap-2">
+            {artStyles.map(style => (
+              <button
+                key={style.id}
+                type="button"
+                onClick={() => setArtStyleId(style.id)}
+                className={`p-3 rounded-lg border text-left transition-colors ${
+                  artStyleId === style.id
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input bg-background hover:bg-accent"
                 }`}
-              />
-            </button>
-          </div>
-
-          {/* Wish cost preview */}
-          <p className="text-center text-sm" style={{ color: "#a78bfa" }}>
-            This story costs <span style={{ color: "#d97706", fontWeight: 600 }}>✦ {creditsNeeded} {creditsNeeded === 1 ? "wish" : "wishes"}</span>
-          </p>
-
-          {/* Insufficient credits warning */}
-          {credits < creditsNeeded && (
-            <p className="text-sm text-center" style={{ color: "#ef4444" }}>
-              Not enough wishes. You need {creditsNeeded} but have {credits}.
-            </p>
-          )}
-
-          {/* Generate button — Luma sits to the left in a flex row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {/* Luma — outer div rotates (genie-nod), inner div scaleX (arms-cross) */}
-            <div
-              className={lumaState === "nod" ? "luma-gen-nod" : lumaState === "lean" ? "luma-gen-lean" : "luma-gen-idle"}
-              style={{ position: "relative", width: "48px", height: "48px", flexShrink: 0 }}
-            >
-              <div
-                className={lumaState === "nod" ? "luma-gen-arms" : ""}
-                style={{ width: "100%", height: "100%" }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/mascot/luma.png"
-                  alt="Luma, your story genie"
-                  style={{ width: "48px", height: "auto" }}
-                />
-              </div>
-              {/* Blink overlay — approximate eye position at 48px */}
-              <span
-                className="luma-gen-blink"
-                style={{
-                  position: "absolute",
-                  top: "17px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: "19px",
-                  height: "3px",
-                  background: "linear-gradient(90deg, rgba(180,140,100,0) 0%, rgba(180,140,100,0.65) 30%, rgba(180,140,100,0.65) 70%, rgba(180,140,100,0) 100%)",
-                  borderRadius: "2px",
-                  pointerEvents: "none",
-                }}
-                aria-hidden="true"
-              />
-            </div>
-
-            <button
-              type="submit"
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-              className={lumaState === "idle" && canGenerate ? "luma-btn-glow" : ""}
-              style={{
-                flex: 1,
-                backgroundColor: lumaState === "nod" ? "#5b21b6" : canGenerate ? "#7c3aed" : "#e9d5ff",
-                color: canGenerate ? "#ffffff" : "#a78bfa",
-                borderRadius: "12px",
-                padding: "14px",
-                fontSize: "14px",
-                fontWeight: 500,
-                border: "none",
-                cursor: canGenerate ? "pointer" : "not-allowed",
-                transition: "background-color 0.15s",
-              }}
-            >
-              {lumaState === "nod" ? "Granting..." : "✦ Grant my wishes"}
-            </button>
+                <div className="font-medium text-sm">{style.name}</div>
+              </button>
+            ))}
           </div>
-
         </div>
       )}
+
+      {/* ── Wish cost ── */}
+      <div className="text-sm text-muted-foreground">
+        This story costs{" "}
+        <span className="font-semibold text-amber-600">✦ {creditsNeeded} {creditsNeeded === 1 ? "wish" : "wishes"}</span>
+        {" "}· You have{" "}
+        <span className={credits < creditsNeeded ? "text-destructive font-semibold" : "font-semibold"}>
+          {credits}
+        </span>
+      </div>
+
+      {credits < creditsNeeded && (
+        <p className="text-sm text-destructive">Not enough wishes. Purchase more to continue.</p>
+      )}
+
+      {/* ── Generate button ── */}
+      <Button
+        onClick={generate}
+        disabled={!canGenerate}
+        className="w-full"
+        size="lg"
+      >
+        ✦ Grant my wishes
+      </Button>
     </div>
   )
 }
