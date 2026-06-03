@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { ChevronDown } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { Story, KidProfile, StoryTemplate } from "@/types"
 import BookCard from "./BookCard"
 import {
@@ -179,6 +180,16 @@ interface StoryLibraryProps {
 export default function StoryLibrary({ stories, profiles, templates }: StoryLibraryProps) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
+  // Read on first render to decide whether to skip the enter animation
+  const [skipEnter] = useState(() => {
+    if (typeof window === "undefined") return false
+    return !!sessionStorage.getItem("luma_library_seen")
+  })
+
+  // Mark seen after mount so the next visit skips the enter animation
+  useEffect(() => {
+    sessionStorage.setItem("luma_library_seen", "1")
+  }, [])
 
   // Build dynamic child options from loaded profiles
   const childOptions: FilterOption[] = [
@@ -317,29 +328,144 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
 
       {/* Empty state — no stories at all */}
       {stories.length === 0 && (
-        <div className="flex flex-col items-center gap-4 py-8 text-center">
-          <BookshelfSVG isEmpty storyCount={0} />
-          <div>
-            <p className="text-base font-semibold" style={{ color: "#2e1065" }}>Your shelf is waiting...</p>
-            <p className="text-sm mt-1" style={{ color: "#a78bfa" }}>
-              Make your first wish and watch it fill with stories.
-            </p>
+        <>
+          <style>{`
+            @keyframes luma-float {
+              0%, 100% { transform: translateY(0px); }
+              50%       { transform: translateY(-6px); }
+            }
+            @keyframes tail-sway {
+              0%, 100% { transform: scaleX(1) rotate(0deg); }
+              50%       { transform: scaleX(0.92) rotate(2deg); }
+            }
+            @keyframes blink {
+              0%, 90%, 100% { transform: scaleY(1); }
+              95%           { transform: scaleY(0.08); }
+            }
+            @keyframes luma-enter {
+              0%   { opacity: 0; transform: translateY(30px); }
+              100% { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes sparkle-pop {
+              0%   { opacity: 0; transform: scale(0) translateY(0); }
+              40%  { opacity: 1; transform: scale(1.2) translateY(-8px); }
+              100% { opacity: 0; transform: scale(0.5) translateY(-18px); }
+            }
+            @keyframes btn-lift {
+              0%, 100% { transform: translateY(0); }
+              50%       { transform: translateY(-2px); }
+            }
+            .luma-lib-enter {
+              animation: luma-enter 0.6s ease-out forwards, luma-float 3.5s ease-in-out 0.6s infinite;
+            }
+            .luma-lib-no-enter {
+              animation: luma-float 3.5s ease-in-out infinite;
+            }
+            .luma-lib-tail {
+              display: block;
+              animation: tail-sway 3.5s ease-in-out infinite;
+              transform-origin: 50% 20%;
+            }
+            .luma-lib-blink {
+              animation: blink 4s ease-in-out 2s infinite;
+              transform-origin: center center;
+            }
+            .luma-lib-sparkle-0 { animation: sparkle-pop 1.8s ease-out 0s infinite; }
+            .luma-lib-sparkle-1 { animation: sparkle-pop 1.8s ease-out 0.9s infinite; }
+            .luma-lib-sparkle-2 { animation: sparkle-pop 1.8s ease-out 1.5s infinite; }
+            .luma-lib-btn { animation: btn-lift 2.5s ease-in-out 1s infinite; }
+          `}</style>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "32px 0", textAlign: "center" }}>
+            {/* Copy */}
+            <div>
+              <p className="text-base font-semibold" style={{ color: "#2e1065" }}>Your story shelf is empty.</p>
+              <p className="text-sm mt-1" style={{ color: "#a78bfa" }}>Let&apos;s grant your wishes.</p>
+            </div>
+
+            {/* Luma + shelf row */}
+            <div style={{ display: "flex", alignItems: "flex-end", width: "100%", maxWidth: "360px" }}>
+              {/* Luma — bottom-left beside bookshelf */}
+              <div
+                className={skipEnter ? "luma-lib-no-enter" : "luma-lib-enter"}
+                style={{ position: "relative", width: "72px", height: "72px", flexShrink: 0 }}
+              >
+                {/* Sparkles */}
+                <span
+                  className="luma-lib-sparkle-0"
+                  style={{ position: "absolute", top: "-4px", right: "-2px", fontSize: "10px", color: "#fbbf24", pointerEvents: "none", zIndex: 1 }}
+                  aria-hidden="true"
+                >✦</span>
+                <span
+                  className="luma-lib-sparkle-1"
+                  style={{ position: "absolute", top: "6px", right: "-14px", fontSize: "8px", color: "#7c3aed", pointerEvents: "none", zIndex: 1 }}
+                  aria-hidden="true"
+                >✦</span>
+                <span
+                  className="luma-lib-sparkle-2"
+                  style={{ position: "absolute", top: "-12px", left: "4px", fontSize: "6px", color: "#fbbf24", pointerEvents: "none", zIndex: 1 }}
+                  aria-hidden="true"
+                >✦</span>
+
+                {/* Image with tail-sway applied via wrapper span */}
+                <span className="luma-lib-tail">
+                  <Image
+                    src="/mascot/luma.png"
+                    alt="Luma, your story genie"
+                    width={72}
+                    height={72}
+                    priority
+                    style={{ display: "block" }}
+                  />
+                </span>
+
+                {/* Blink overlay — approximate eye position at 72px */}
+                <span
+                  className="luma-lib-blink"
+                  style={{
+                    position: "absolute",
+                    top: "26px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: "28px",
+                    height: "4px",
+                    background: "linear-gradient(90deg, rgba(180,140,100,0) 0%, rgba(180,140,100,0.65) 30%, rgba(180,140,100,0.65) 70%, rgba(180,140,100,0) 100%)",
+                    borderRadius: "2px",
+                    pointerEvents: "none",
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+
+              {/* Bookshelf fills remaining width */}
+              <div style={{ flex: 1 }}>
+                <BookshelfSVG isEmpty storyCount={0} />
+              </div>
+            </div>
+
+            {/* CTA — full width pill, purple */}
+            <Link
+              href="/generate"
+              className="luma-lib-btn"
+              style={{
+                display: "block",
+                width: "100%",
+                maxWidth: "360px",
+                backgroundColor: "#7c3aed",
+                color: "#ffffff",
+                borderRadius: "999px",
+                padding: "14px 24px",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+                textAlign: "center",
+                boxSizing: "border-box",
+              }}
+            >
+              Grant my first wish
+            </Link>
           </div>
-          <Link
-            href="/generate"
-            style={{
-              backgroundColor: "#7c3aed",
-              color: "#ffffff",
-              borderRadius: "12px",
-              padding: "12px 24px",
-              fontSize: "14px",
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            ✦ Make your first wish
-          </Link>
-        </div>
+        </>
       )}
     </section>
   )
