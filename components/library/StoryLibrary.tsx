@@ -412,10 +412,10 @@ export default function StoryLibrary({ stories, profiles, templates }: StoryLibr
                   <Image
                     src="/mascot/luma.png"
                     alt="Luma, your story genie"
-                    width={72}
-                    height={72}
+                    width={128}
+                    height={128}
                     priority
-                    style={{ display: "block" }}
+                    style={{ width: "72px", height: "auto" }}
                   />
                 </span>
 

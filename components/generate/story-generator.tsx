@@ -731,9 +731,9 @@ export function StoryGenerator({
                 <Image
                   src="/mascot/luma.png"
                   alt="Luma, your story genie"
-                  width={48}
-                  height={48}
-                  style={{ display: "block" }}
+                  width={64}
+                  height={64}
+                  style={{ width: "48px", height: "auto" }}
                 />
               </div>
               {/* Blink overlay — approximate eye position at 48px */}
