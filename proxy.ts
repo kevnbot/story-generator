@@ -14,13 +14,23 @@ const PUBLIC_ROUTES = [
   "/api/twilio/webhook",
 ]
 const PUBLIC_METADATA_ROUTES = ["/sitemap.xml", "/robots.txt"]
+// Exact-match public routes — used for paths like "/" that can't be matched
+// with startsWith (it would match every route).
+const PUBLIC_EXACT_ROUTES = ["/", "/terms", "/privacy"]
 const ADMIN_ROUTES = ["/admin"]
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r))
+  const isPublic =
+    PUBLIC_ROUTES.some(r => pathname.startsWith(r)) || PUBLIC_EXACT_ROUTES.includes(pathname)
   const isPublicMetadata = PUBLIC_METADATA_ROUTES.includes(pathname)
-  const isStatic = pathname.startsWith("/_next") || pathname.startsWith("/favicon")
+  // Treat framework internals and public static asset files as static so they're
+  // never gated by auth (e.g. /images/*.png served to logged-out marketing visitors,
+  // including via the next/image optimizer's internal fetch of the source file).
+  const isStatic =
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    /\.(png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|otf|mp4|webm)$/i.test(pathname)
   const isServerAction = request.headers.has("next-action")
 
   if (isStatic || isPublicMetadata) {
@@ -66,8 +76,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect authenticated users away from auth pages
-  if (user && (pathname === "/login" || pathname === "/signup")) {
+  // Redirect authenticated users away from the marketing home and auth pages
+  if (user && (pathname === "/" || pathname === "/login" || pathname === "/signup")) {
     const homeUrl = request.nextUrl.clone()
     homeUrl.pathname = "/generate"
     return NextResponse.redirect(homeUrl)
