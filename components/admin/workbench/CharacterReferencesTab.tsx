@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { buildReferenceImagePrompt } from "@/lib/ai/prompt-builder"
+import { buildProfilePicturePrompt, buildReferenceImagePrompt } from "@/lib/ai/prompt-builder"
 import type { KidProfile } from "@/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -253,10 +253,13 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
   const [toyResult, setToyResult] = useState<StepResult | null>(null)
   const [saveToyLoading, setSaveToyLoading] = useState(false)
 
-  // Step R3
-  const [combinedLoading, setCombinedLoading] = useState(false)
-  const [combinedResult, setCombinedResult] = useState<StepResult | null>(null)
-  const [saveCombinedLoading, setSaveCombinedLoading] = useState(false)
+  const [toyPromptPreview, setToyPromptPreview] = useState<string | null>(null)
+
+  // Step R4
+  const [pfpLoading, setPfpLoading] = useState(false)
+  const [pfpResult, setPfpResult] = useState<{ url: string | null; prompt: string; model: string; durationMs: number; error: string | null } | null>(null)
+  const [savePfpLoading, setSavePfpLoading] = useState(false)
+  const [savedPfpField, setSavedPfpField] = useState(false)
 
   // Save all
   const [saveAllLoading, setSaveAllLoading] = useState(false)
@@ -267,7 +270,9 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     setFullProfile(null)
     setCharResult(null)
     setToyResult(null)
-    setCombinedResult(null)
+    setPfpResult(null)
+    setToyPromptPreview(null)
+    setSavedPfpField(false)
     setSavedFields([])
     if (!id) return
     setProfileLoading(true)
@@ -277,7 +282,20 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId: id }),
       })
-      if (res.ok) setFullProfile(await res.json() as FullProfile)
+      if (res.ok) {
+        const fp = await res.json() as FullProfile
+        setFullProfile(fp)
+        if (fp.toy?.name) {
+          fetch("/api/workbench/toy-prompt-preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profileId: id }),
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then((d: { prompt?: string | null } | null) => { if (d?.prompt) setToyPromptPreview(d.prompt) })
+            .catch(() => {})
+        }
+      }
     } catch {
       // ignore
     } finally {
@@ -285,13 +303,11 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     }
   }
 
-  async function runStep(step: "character" | "toy" | "combined") {
+  async function runStep(step: "character" | "toy") {
     if (!selectedProfileId) return
-    const setLoading = step === "character" ? setCharLoading : step === "toy" ? setToyLoading : setCombinedLoading
-    const setResult = step === "character" ? setCharResult : step === "toy" ? setToyResult : setCombinedResult
-    const savedFieldKey = step === "character" ? "character_illustration_path"
-      : step === "toy" ? "toy_reference_image_path"
-      : "combined_reference_path"
+    const setLoading = step === "character" ? setCharLoading : setToyLoading
+    const setResult = step === "character" ? setCharResult : setToyResult
+    const savedFieldKey = step === "character" ? "character_illustration_path" : "toy_reference_image_path"
     setLoading(true)
     setResult(null)
     setSavedFields(prev => prev.filter(f => f !== savedFieldKey))
@@ -299,14 +315,7 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
       const res = await fetch("/api/workbench/generate-reference-step", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          step,
-          profileId: selectedProfileId,
-          ...(step === "combined" && {
-            characterUrl: charResult?.url ?? undefined,
-            toyUrl: toyResult?.url ?? undefined,
-          }),
-        }),
+        body: JSON.stringify({ step, profileId: selectedProfileId }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -357,12 +366,42 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     setSaveToyLoading(false)
   }
 
-  async function saveCombined() {
-    if (!combinedResult?.url) return
-    setSaveCombinedLoading(true)
-    await saveImages({ combinedUrl: combinedResult.url })
-    setCombinedResult(null)
-    setSaveCombinedLoading(false)
+  async function generatePfp() {
+    if (!selectedProfileId || !fullProfile) return
+    const charUrl = charResult?.url ?? fullProfile.character_illustration_url ?? null
+    if (!charUrl) return
+    setPfpLoading(true)
+    setPfpResult(null)
+    setSavedPfpField(false)
+    try {
+      const res = await fetch("/api/workbench/generate-profile-picture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId: selectedProfileId,
+          characterIllustrationUrl: charUrl,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPfpResult(data as { url: string | null; prompt: string; model: string; durationMs: number; error: string | null })
+      } else {
+        setPfpResult({ url: null, prompt: "", model: "", durationMs: 0, error: (data as { error?: string }).error ?? "Failed" })
+      }
+    } catch {
+      setPfpResult({ url: null, prompt: "", model: "", durationMs: 0, error: "Network error" })
+    } finally {
+      setPfpLoading(false)
+    }
+  }
+
+  async function savePfp() {
+    if (!pfpResult?.url) return
+    setSavePfpLoading(true)
+    await saveImages({ combinedUrl: pfpResult.url })
+    setSavedPfpField(true)
+    setPfpResult(null)
+    setSavePfpLoading(false)
   }
 
   async function saveAll() {
@@ -370,30 +409,33 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
     await saveImages({
       characterUrl: charResult?.url ?? undefined,
       toyUrl: toyResult?.url ?? undefined,
-      combinedUrl: combinedResult?.url ?? undefined,
+      combinedUrl: pfpResult?.url ?? undefined,
     })
     setCharResult(null)
     setToyResult(null)
-    setCombinedResult(null)
+    setPfpResult(null)
     setSaveAllLoading(false)
   }
 
-  async function saveHistoryVersion(step: "character" | "toy" | "combined", url: string): Promise<void> {
-    const opts = step === "character" ? { characterUrl: url }
-      : step === "toy" ? { toyUrl: url }
-      : { combinedUrl: url }
+  async function saveHistoryVersion(step: "character" | "toy", url: string): Promise<void> {
+    const opts = step === "character" ? { characterUrl: url } : { toyUrl: url }
     const ok = await saveImages(opts)
     if (!ok) throw new Error("Save failed")
   }
 
   const hasToy = !!(fullProfile?.toy?.name)
-  const canSaveAll = !!(charResult?.url || toyResult?.url || combinedResult?.url)
+  const canSaveAll = !!(charResult?.url || toyResult?.url || pfpResult?.url)
   const charPromptPreview = fullProfile
     ? buildReferenceImagePrompt(fullProfile as unknown as KidProfile)
     : null
+  const pfpPromptPreview = fullProfile
+    ? buildProfilePicturePrompt(
+        { name: fullProfile.name, age: fullProfile.age, age_months: fullProfile.age_months, gender: fullProfile.gender ?? undefined },
+        fullProfile.toy?.name ? { name: fullProfile.toy.name, description: fullProfile.toy.description ?? null } : null
+      )
+    : null
   const currentCharUrl = fullProfile?.character_illustration_url ?? fullProfile?.reference_image_url ?? null
   const currentToyUrl = fullProfile?.toy_reference_image_url ?? null
-  const currentCombinedUrl = fullProfile?.combined_reference_url ?? null
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -522,6 +564,15 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
               onUse={(url) => saveHistoryVersion("toy", url)}
             />
 
+            {toyPromptPreview && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Prompt to be sent</p>
+                <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 bg-muted/40 rounded-lg font-mono text-[11px] leading-relaxed text-foreground">
+                  {toyPromptPreview}
+                </pre>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -546,70 +597,85 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
             {toyResult && <StepResultPanel result={toyResult} />}
           </StepCard>
 
-          {/* Step R3 — Combined Reference */}
-          <StepCard stepLabel="Step R3 — Combined Reference">
-            {!fullProfile.character_illustration_path && !charResult?.url && (
-              <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
-                Character illustration required. Complete Step R1 and save it before generating combined.
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Character input</p>
-                <ImagePreview
-                  url={charResult?.url ?? fullProfile.character_illustration_url}
-                  alt="Character illustration"
-                  path={fullProfile.character_illustration_path}
-                />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Toy input</p>
-                <ImagePreview
-                  url={toyResult?.url ?? fullProfile.toy_reference_image_url}
-                  alt="Toy illustration"
-                  path={fullProfile.toy_reference_image_path}
-                />
-              </div>
+          {/* Step R4 — Profile Picture */}
+          <StepCard stepLabel="Step R4 — Profile Picture">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Character illustration</p>
+              <ImagePreview
+                url={charResult?.url ?? fullProfile.character_illustration_url}
+                alt="Character illustration"
+                path={fullProfile.character_illustration_path}
+              />
             </div>
 
+            {!charResult?.url && !fullProfile.character_illustration_url && (
+              <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
+                Character illustration required — generate Step R1 first
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Generated from the character illustration above. The toy is included from profile description.
+            </p>
+
+            {pfpPromptPreview && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Prompt to be sent</p>
+                <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 bg-muted/40 rounded-lg font-mono text-[11px] leading-relaxed text-foreground">
+                  {pfpPromptPreview}
+                </pre>
+              </div>
+            )}
+
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Current combined reference</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Current profile picture</p>
               <ImagePreview
                 url={fullProfile.combined_reference_url}
-                alt={`${fullProfile.name} combined reference`}
+                alt={`${fullProfile.name} profile picture`}
                 path={fullProfile.combined_reference_path}
               />
             </div>
 
-            <PreviousVersions
-              current={currentCombinedUrl ? { url: currentCombinedUrl } : null}
-              rows={fullProfile.history?.combined ?? []}
-              onUse={(url) => saveHistoryVersion("combined", url)}
-            />
-
             <div className="flex gap-2">
               <Button
                 size="sm"
-                disabled={combinedLoading || (!fullProfile.character_illustration_path && !charResult?.url)}
-                onClick={() => runStep("combined")}
+                disabled={pfpLoading || (!charResult?.url && !fullProfile.character_illustration_url)}
+                onClick={generatePfp}
                 className="flex-1"
               >
-                {combinedLoading ? "Generating…" : "Generate combined reference"}
+                {pfpLoading ? "Generating…" : "Generate profile picture"}
               </Button>
-              {combinedResult?.url && (
+              {pfpResult?.url && (
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={saveCombinedLoading}
-                  onClick={saveCombined}
+                  disabled={savePfpLoading}
+                  onClick={savePfp}
                 >
-                  {saveCombinedLoading ? "Saving…" : savedFields.includes("combined_reference_path") ? "✓ Saved" : "Save to profile"}
+                  {savePfpLoading ? "Saving…" : savedPfpField ? "✓ Saved" : "Save to profile"}
                 </Button>
               )}
             </div>
 
-            {combinedResult && <StepResultPanel result={combinedResult} />}
+            {pfpResult && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${
+                    pfpResult.url ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  }`}>
+                    {pfpResult.url ? "✓ generated" : "✗ failed"}
+                  </span>
+                  <span className="text-muted-foreground">{pfpResult.model}</span>
+                  <span className="text-muted-foreground">{(pfpResult.durationMs / 1000).toFixed(1)}s</span>
+                </div>
+                {pfpResult.error && (
+                  <p className="text-xs text-destructive">{pfpResult.error}</p>
+                )}
+                {pfpResult.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={pfpResult.url} alt="Generated profile picture" className="w-full rounded-lg object-contain" />
+                )}
+              </div>
+            )}
           </StepCard>
 
           {/* Save all */}

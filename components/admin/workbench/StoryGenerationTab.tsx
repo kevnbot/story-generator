@@ -10,6 +10,7 @@ import {
   getImageProviderMetadata,
   listImageProviderMetadata,
   type ImageProviderMetadata,
+  type CharacterReference,
 } from "@/lib/ai/providers/image/options"
 import { listTextProviders } from "@/lib/ai/providers/text/registry"
 import { formatAge } from "@/lib/ai/prompt-builder"
@@ -104,25 +105,13 @@ interface BuildReferenceResult {
   profileRefs: { profileId: string; name: string; url: string | null; storageField: string }[]
   referenceImageUrls: string[]
   referenceImageLabels: string[]
-  compositingSteps: {
-    addedProfileName: string
-    prompt: string
-    model: string
-    resultUrl: string
-    durationMs: number
-    success: boolean
-    error: string | null
-  }[]
-  baseReferenceUrl: string | null
-  styleTransfer: {
-    inputUrl: string
-    artStylePrefix: string
-    model: string
-    resultUrl: string
-    durationMs: number
-    success: boolean
-  } | null
-  styledReferenceUrl: string | null
+  characterReferences: CharacterReference[]
+  storyCharacterRefs: CharacterReference[]
+}
+
+interface StoryCharacterRefsResult {
+  storyCharacterRefs: CharacterReference[]
+  skipped: { name: string; reason: string }[]
 }
 
 // ─── Local page splitter (mirrors lib/ai/story.ts — safe to copy here) ───────
@@ -172,15 +161,6 @@ function getStorageField(profile: Profile): string {
   return "none"
 }
 
-function storageFieldBadge(field: string): { label: string; className: string } {
-  switch (field) {
-    case "combined_reference_path": return { label: "combined", className: "bg-green-100 text-green-700" }
-    case "character_illustration_path": return { label: "illustration", className: "bg-blue-100 text-blue-700" }
-    case "reference_image_path": return { label: "reference", className: "bg-muted text-muted-foreground" }
-    case "reference_image_url": return { label: "URL", className: "bg-muted text-muted-foreground" }
-    default: return { label: "none", className: "bg-red-100 text-red-700" }
-  }
-}
 
 function getImageProviderDisabledReason(provider: ImageProviderMetadata, selectedProfileCount: number): string | null {
   if (provider.referenceMode === "single" && selectedProfileCount > 1) {
@@ -672,59 +652,26 @@ function Stage3Card({ result, onRerun }: { result: VisualResult; onRerun: () => 
   )
 }
 
-function CompositingStepRow({ step }: { step: BuildReferenceResult["compositingSteps"][number] }) {
-  const [showPrompt, setShowPrompt] = useState(false)
-
-  return (
-    <div className="rounded-lg border bg-background p-3 space-y-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium">Adding {step.addedProfileName}</span>
-        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-          step.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-        }`}>
-          {step.success ? "✓ success" : "✗ failed"}
-        </span>
-        <span className="text-xs text-muted-foreground ml-auto">{(step.durationMs / 1000).toFixed(1)}s</span>
-      </div>
-
-      {step.error && (
-        <p className="text-xs text-destructive">{step.error}</p>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setShowPrompt(v => !v)}
-        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {showPrompt ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        Compositing prompt
-      </button>
-      {showPrompt && (
-        <pre className="whitespace-pre-wrap break-words px-3 py-2 bg-muted/40 rounded-lg font-mono text-[11px] leading-relaxed text-foreground">
-          {step.prompt}
-        </pre>
-      )}
-
-      {step.success && step.resultUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={step.resultUrl}
-          alt={`After adding ${step.addedProfileName}`}
-          className="w-full rounded-lg object-cover max-h-48"
-        />
-      )}
-    </div>
-  )
-}
-
 function Stage4Card({
   result,
+  profiles,
+  storyCharacters,
+  storyCharacterRefsResult,
+  storyCharacterRefsLoading,
+  storyCharacterRefsError,
   onRerun,
+  onGenerateStoryCharacterRefs,
 }: {
   result: BuildReferenceResult
+  profiles: Profile[]
+  storyCharacters: { name: string; description: string; appearsOnPages: number[] }[]
+  storyCharacterRefsResult: StoryCharacterRefsResult | null
+  storyCharacterRefsLoading: boolean
+  storyCharacterRefsError: string | null
   onRerun: () => void
+  onGenerateStoryCharacterRefs: () => void
 }) {
-  const finalUrl = result.styledReferenceUrl ?? result.baseReferenceUrl
+  const canGenerateStoryCharacterRefs = storyCharacters.length > 0 && !storyCharacterRefsLoading
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -746,95 +693,127 @@ function Stage4Card({
         {/* 4a — Individual References */}
         <div className="px-4 py-3 space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4a — Individual References</p>
-          <div className="grid grid-cols-2 gap-3">
-            {result.profileRefs.map(ref => {
-              const badge = storageFieldBadge(ref.storageField)
+          <div className="space-y-3">
+            {profiles.map(profile => {
+              const profileRef = result.characterReferences.find(r => r.role === "profile" && r.name === profile.name)
+              const toyRef = result.characterReferences.find(r => r.role === "toy" && r.boundTo === profile.name)
+              const hasToy = !!profile.toy?.name
               return (
-                <div key={ref.profileId} className="rounded-lg border bg-background p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">{ref.name}</span>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-                  {ref.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={ref.url}
-                      alt={`${ref.name} reference`}
-                      className="w-full rounded-lg object-cover max-h-32"
-                    />
-                  ) : (
-                    <div className="w-full rounded-lg bg-red-50 border border-red-200 flex items-center justify-center py-6 text-xs text-red-600">
-                      No reference image
+                <div key={profile.id} className="rounded-lg border bg-background p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Character illustration */}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-medium">{profile.name}</span>
+                        {!profileRef && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
+                            missing
+                          </span>
+                        )}
+                      </div>
+                      {profileRef ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={profileRef.imageUrl}
+                          alt={`${profile.name} reference`}
+                          className="w-full rounded-lg object-cover max-h-28"
+                        />
+                      ) : (
+                        <div className="w-full rounded-lg bg-red-50 border border-red-200 flex items-center justify-center py-4 text-xs text-red-600 text-center px-2">
+                          No character illustration — text fallback will be used
+                        </div>
+                      )}
                     </div>
-                  )}
+                    {/* Toy illustration */}
+                    {hasToy && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-medium">{profile.name}&apos;s treasured item</span>
+                          {!toyRef && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">
+                              missing
+                            </span>
+                          )}
+                        </div>
+                        {toyRef ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={toyRef.imageUrl}
+                            alt={`${profile.toy?.name} toy reference`}
+                            className="w-full rounded-lg object-cover max-h-28"
+                          />
+                        ) : (
+                          <div className="w-full rounded-lg bg-yellow-50 border border-yellow-200 flex items-center justify-center py-4 text-xs text-yellow-700 text-center px-2">
+                            {profile.toy?.name ? `No illustration for ${profile.toy.name}` : "No toy illustration"}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* 4b — Compositing Steps */}
+        {/* 4b — Story Character References */}
         <div className="px-4 py-3 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4b — Composite Reference</p>
-          {result.compositingSteps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No composite generated. Multi-reference providers receive the individual profile references above.
-            </p>
-          ) : (
-            result.compositingSteps.map((step, i) => (
-              <CompositingStepRow key={i} step={step} />
-            ))
-          )}
-        </div>
-
-        {/* 4c — Style Transfer */}
-        <div className="px-4 py-3 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4c — Style Transfer</p>
-          {result.styleTransfer ? (
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground font-mono">{result.styleTransfer.artStylePrefix}</p>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${
-                  result.styleTransfer.success ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {result.styleTransfer.success ? "✓ applied" : "⚠ unchanged"}
-                </span>
-                <span>{(result.styleTransfer.durationMs / 1000).toFixed(1)}s</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <p className="text-[11px] text-muted-foreground">Before</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={result.styleTransfer.inputUrl} alt="Before style transfer" className="w-full rounded-lg object-cover" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[11px] text-muted-foreground">After</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={result.styleTransfer.resultUrl} alt="After style transfer" className="w-full rounded-lg object-cover" />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Skipped — art style is applied in the page image prompts.</p>
-          )}
-        </div>
-
-        {/* Final reference image */}
-        {finalUrl && (
-          <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              First reference image
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Single-reference providers use this image. Multi-reference providers use all resolved profile references.
-            </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={finalUrl} alt="Final reference image" className="w-full rounded-lg object-cover" />
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">4b — Story Character References</p>
+            {storyCharacters.length === 0 && (
+              <span className="text-[10px] text-muted-foreground">(no story characters detected)</span>
+            )}
           </div>
-        )}
 
+          <Button
+            disabled={!canGenerateStoryCharacterRefs}
+            onClick={onGenerateStoryCharacterRefs}
+            className="w-full"
+            variant="outline"
+          >
+            {storyCharacterRefsLoading
+              ? "Generating…"
+              : storyCharacterRefsResult
+              ? "Re-generate Story Character References"
+              : "Generate Story Character References"}
+          </Button>
+
+          {storyCharacterRefsError && (
+            <p className="text-xs text-destructive">{storyCharacterRefsError}</p>
+          )}
+
+          {storyCharacterRefsResult && (
+            <div className="space-y-2">
+              {storyCharacterRefsResult.storyCharacterRefs.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  {storyCharacterRefsResult.storyCharacterRefs.map(ref => (
+                    <div key={ref.name} className="rounded-lg border bg-background p-3 space-y-1.5">
+                      <span className="text-xs font-medium">{ref.name}</span>
+                      {ref.description && (
+                        <p className="text-[11px] text-muted-foreground line-clamp-2">{ref.description}</p>
+                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={ref.imageUrl}
+                        alt={`${ref.name} story character reference`}
+                        className="w-full rounded-lg object-cover max-h-28"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {storyCharacterRefsResult.skipped.length > 0 && (
+                <div className="space-y-1">
+                  {storyCharacterRefsResult.skipped.map(s => (
+                    <p key={s.name} className="text-[11px] text-muted-foreground">
+                      {s.name}: skipped — {s.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1182,6 +1161,9 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
   const [referenceLoading, setReferenceLoading] = useState(false)
   const [referenceResult, setReferenceResult] = useState<BuildReferenceResult | null>(null)
   const [referenceError, setReferenceError] = useState<string | null>(null)
+  const [storyCharacterRefsResult, setStoryCharacterRefsResult] = useState<StoryCharacterRefsResult | null>(null)
+  const [storyCharacterRefsLoading, setStoryCharacterRefsLoading] = useState(false)
+  const [storyCharacterRefsError, setStoryCharacterRefsError] = useState<string | null>(null)
 
   // Stage 5
   const [imagePrompts, setImagePrompts] = useState<string[] | null>(initialStory?.imagePrompts ?? null)
@@ -1238,6 +1220,9 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
     setReferenceLoading(false)
     setReferenceResult(null)
     setReferenceError(null)
+    setStoryCharacterRefsResult(null)
+    setStoryCharacterRefsLoading(false)
+    setStoryCharacterRefsError(null)
     setImagePrompts(null)
     setImagesLoading(false)
     setImagesProgress(0)
@@ -1249,7 +1234,11 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
     setSaveError(null)
   }
 
-  async function triggerBuildImagePrompts(vc: StoryVisualContext, rr: BuildReferenceResult) {
+  async function triggerBuildImagePrompts(
+    vc: StoryVisualContext,
+    rr: BuildReferenceResult,
+    scrr?: StoryCharacterRefsResult | null
+  ) {
     setImagePrompts(null)
     const referencesAvailable = providerCtx.supportsReferenceImages && rr.referenceImageUrls.length > 0
     try {
@@ -1262,7 +1251,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
           profileIds: selectedProfileIds,
           referenceAvailable: referencesAvailable,
           imageProvider,
-          referenceImageLabels: rr.referenceImageLabels,
+          characterReferences: rr.characterReferences,
+          storyCharacterRefs: scrr?.storyCharacterRefs ?? [],
         }),
       })
       const data = await res.json()
@@ -1379,6 +1369,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
     setVisualLoading(true)
     setVisualError(null)
     setVisualResult(null)
+    setStoryCharacterRefsResult(null)
+    setStoryCharacterRefsError(null)
 
     const characterNames = selectedProfiles.map(p => p.name)
     const toyNames = selectedProfiles.map(p => p.toy?.name).filter((n): n is string => !!n)
@@ -1398,7 +1390,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
         const vr = data as VisualResult
         setVisualResult(vr)
         if (referenceResult) {
-          await triggerBuildImagePrompts(vr.visualContext, referenceResult)
+          await triggerBuildImagePrompts(vr.visualContext, referenceResult, storyCharacterRefsResult)
         }
       }
     } catch {
@@ -1428,7 +1420,7 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
         const rr = data as BuildReferenceResult
         setReferenceResult(rr)
         if (visualResult) {
-          await triggerBuildImagePrompts(visualResult.visualContext, rr)
+          await triggerBuildImagePrompts(visualResult.visualContext, rr, storyCharacterRefsResult)
         }
       }
     } catch {
@@ -1438,14 +1430,51 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
     }
   }
 
+  async function generateStoryCharacterRefs() {
+    if (!visualResult) return
+    setStoryCharacterRefsLoading(true)
+    setStoryCharacterRefsError(null)
+    try {
+      const res = await fetch("/api/workbench/generate-story-character-references", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storyCharacters: visualResult.visualContext.storyCharacters.map(sc => ({
+            name: sc.name,
+            description: sc.description,
+            pageAppearances: sc.appearsOnPages,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setStoryCharacterRefsError((data as { error?: string }).error ?? "Failed to generate story character references")
+      } else {
+        const scrr = data as StoryCharacterRefsResult
+        setStoryCharacterRefsResult(scrr)
+        if (referenceResult && visualResult) {
+          await triggerBuildImagePrompts(visualResult.visualContext, referenceResult, scrr)
+        }
+      }
+    } catch {
+      setStoryCharacterRefsError("Network error. Please try again.")
+    } finally {
+      setStoryCharacterRefsLoading(false)
+    }
+  }
+
   async function generateImages() {
     if (!imagePrompts) return
     setImagesLoading(true)
     setImagesProgress(0)
     setImagesError(null)
+    const allCharacterReferences = [
+      ...(referenceResult?.characterReferences ?? []),
+      ...(storyCharacterRefsResult?.storyCharacterRefs ?? []),
+    ]
     const referenceImageUrls = referenceResult?.referenceImageUrls ?? []
     const referenceImageLabels = referenceResult?.referenceImageLabels ?? []
-    const referenceUrl = referenceImageUrls[0] ?? referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    const referenceUrl = referenceImageUrls[0] ?? null
     const results: GeneratedImageResult[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
@@ -1455,9 +1484,9 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: imagePrompts[i],
-            referenceImageUrl: referenceUrl,
-            referenceImageUrls,
-            referenceImageLabels,
+            ...(allCharacterReferences.length > 0
+              ? { characterReferences: allCharacterReferences }
+              : { referenceImageUrl: referenceUrl, referenceImageUrls, referenceImageLabels }),
             imageProvider,
             pageIndex: i,
           }),
@@ -1489,18 +1518,22 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
 
   async function rerunImage(pageIndex: number) {
     if (!imagePrompts?.[pageIndex] || !generatedImages) return
+    const allCharacterReferences = [
+      ...(referenceResult?.characterReferences ?? []),
+      ...(storyCharacterRefsResult?.storyCharacterRefs ?? []),
+    ]
     const referenceImageUrls = referenceResult?.referenceImageUrls ?? []
     const referenceImageLabels = referenceResult?.referenceImageLabels ?? []
-    const referenceUrl = referenceImageUrls[0] ?? referenceResult?.styledReferenceUrl ?? referenceResult?.baseReferenceUrl ?? null
+    const referenceUrl = referenceImageUrls[0] ?? null
     try {
       const res = await fetch("/api/workbench/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: imagePrompts[pageIndex],
-          referenceImageUrl: referenceUrl,
-          referenceImageUrls,
-          referenceImageLabels,
+          ...(allCharacterReferences.length > 0
+            ? { characterReferences: allCharacterReferences }
+            : { referenceImageUrl: referenceUrl, referenceImageUrls, referenceImageLabels }),
           imageProvider,
           pageIndex,
         }),
@@ -2054,18 +2087,43 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
             {/* Stage 4 card */}
             {referenceResult && !referenceLoading && (
               <>
-                <Stage4Card result={referenceResult} onRerun={buildReference} />
+                <Stage4Card
+                  result={referenceResult}
+                  profiles={selectedProfiles}
+                  storyCharacters={visualResult?.visualContext.storyCharacters ?? []}
+                  storyCharacterRefsResult={storyCharacterRefsResult}
+                  storyCharacterRefsLoading={storyCharacterRefsLoading}
+                  storyCharacterRefsError={storyCharacterRefsError}
+                  onRerun={buildReference}
+                  onGenerateStoryCharacterRefs={generateStoryCharacterRefs}
+                />
 
                 {/* Stage 4 handoff */}
                 <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs space-y-1">
                   <p className="font-semibold mb-2">→ Passing to image generator:</p>
+                  <p>Profile references:</p>
+                  {selectedProfiles.map(p => {
+                    const hasChar = referenceResult.characterReferences.some(r => r.role === "profile" && r.name === p.name)
+                    const hasToy = referenceResult.characterReferences.some(r => r.role === "toy" && r.boundTo === p.name)
+                    return (
+                      <p key={p.id} className="pl-2">
+                        {p.name} {hasChar ? "✓" : "✗"}
+                        {p.toy?.name ? `  ${p.name}'s treasured item ${hasToy ? "✓" : "✗"}` : ""}
+                      </p>
+                    )
+                  })}
+                  {storyCharacterRefsResult?.storyCharacterRefs && storyCharacterRefsResult.storyCharacterRefs.length > 0 && (
+                    <>
+                      <p>Story character references:</p>
+                      {storyCharacterRefsResult.storyCharacterRefs.map(r => (
+                        <p key={r.name} className="pl-2">{r.name} ✓</p>
+                      ))}
+                    </>
+                  )}
                   <p>
-                    {"Reference images: "}
-                    {referenceResult.referenceImageUrls.length}
+                    {"Total reference images: "}
+                    {referenceResult.characterReferences.length + (storyCharacterRefsResult?.storyCharacterRefs.length ?? 0)}
                   </p>
-                  {referenceResult.profileRefs.filter(r => r.url).map(r => (
-                    <p key={r.profileId}>{r.name} ✓</p>
-                  ))}
                   <p>Provider: {imageProviders.find(p => p.id === imageProvider)?.label ?? imageProvider}</p>
                   <p>
                     {"Provider supports reference images: "}
@@ -2074,8 +2132,8 @@ export function StoryGenerationTab({ profiles, storyTypes, artStyles, initialSto
                       : "✗ No - images will use text descriptions only"}
                   </p>
                   <p>
-                    {"Reference mode: "}
-                    {providerCtx.referenceMode}
+                    {"Reference order: "}
+                    {[...referenceResult.characterReferences, ...(storyCharacterRefsResult?.storyCharacterRefs ?? [])].map(r => r.name).join(" → ") || "none"}
                   </p>
                 </div>
               </>
