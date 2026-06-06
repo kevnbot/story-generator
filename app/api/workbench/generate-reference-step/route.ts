@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { generateProfileReferenceImage } from "@/lib/ai/image"
 import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
+import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
 import type { KidProfile } from "@/types"
 
 type StepType = "character" | "toy" | "combined"
@@ -81,12 +82,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Profile has no toy name" }, { status: 400 })
     }
 
-    const humanPronoun = profile.gender === "girl" ? "her" : profile.gender === "boy" ? "his" : "their"
-    let toyDesc = toy.name
-    if (toy.description) toyDesc += `, ${toy.description}`
-    else if (toy.type) toyDesc += ` (a ${toy.type})`
-
-    const toyPrompt = `${profile.name}'s favorite toy: ${toyDesc}. An isolated stuffed plushie toy on a plain white background. The toy is a separate object, not a character. Children's picture book illustration style, simple, clean, detailed, ${humanPronoun} beloved companion toy.`
+    const toyPrompt = buildToyIllustrationPrompt(toy)
 
     const model = "fal-ai/flux/dev"
     const response = await falRun(model, {
