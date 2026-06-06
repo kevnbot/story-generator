@@ -18,23 +18,32 @@ export default async function ProfilesPage() {
   const { data: profiles } = userRow
     ? await service
         .from("kid_profiles")
-        .select("id, name, age, age_months, gender, appearance, personality_tags, toy, reference_image_path, reference_image_url")
+        .select("id, name, age, age_months, gender, appearance, personality_tags, toy, reference_image_path, reference_image_url, character_illustration_path, combined_reference_path")
         .eq("account_id", userRow.account_id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
     : { data: [] }
 
   const rows = profiles ?? []
-  const signedUrlsByPath = await createSignedImageUrlsMap(
-    service,
-    rows.map((p) => p.reference_image_path).filter((p): p is string => Boolean(p))
-  )
+  const pathsToSign = rows.flatMap((p) => [
+    p.combined_reference_path,
+    p.character_illustration_path,
+    p.reference_image_path,
+  ]).filter((p): p is string => Boolean(p))
+  const signedUrlsByPath = await createSignedImageUrlsMap(service, pathsToSign)
 
   const resolvedProfiles = rows.map((profile) => ({
     ...profile,
-    reference_image_url: profile.reference_image_path
-      ? signedUrlsByPath.get(profile.reference_image_path) ?? profile.reference_image_url
-      : profile.reference_image_url,
+    reference_image_url: (() => {
+      const pfpPath = profile.combined_reference_path
+      const charPath = profile.character_illustration_path
+      const refPath = profile.reference_image_path
+      return (pfpPath && signedUrlsByPath.get(pfpPath))
+        ?? (charPath && signedUrlsByPath.get(charPath))
+        ?? (refPath && signedUrlsByPath.get(refPath))
+        ?? profile.reference_image_url
+        ?? null
+    })(),
   }))
 
   return <ProfilesClient profiles={resolvedProfiles} />

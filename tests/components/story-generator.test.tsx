@@ -31,16 +31,16 @@ describe("StoryGenerator", () => {
     render(<StoryGenerator profiles={[]} artStyles={[]} credits={1} imagesAvailable={false} />)
 
     expect(screen.getByRole("heading", { name: "Add a kid profile first" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Add Profile" })).toHaveAttribute("href", "/profiles")
+    expect(screen.getByRole("link", { name: "Create a profile" })).toHaveAttribute("href", "/profile/new")
   })
 
   it("disables generation when credits are insufficient", async () => {
     const user = userEvent.setup()
     render(<StoryGenerator profiles={profiles} artStyles={artStyles} credits={1} imagesAvailable={true} />)
 
-    await user.click(screen.getByRole("switch", { name: "Include images" }))
+    await user.click(screen.getByRole("button", { name: "Include illustrations" }))
 
-    expect(screen.getByText("Not enough wishes. You need 2 but have 1.")).toBeInTheDocument()
+    expect(screen.getByText("Not enough wishes. Purchase more to continue.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "✦ Grant my wishes" })).toBeDisabled()
   })
 
@@ -58,7 +58,7 @@ describe("StoryGenerator", () => {
 
     await user.click(screen.getByRole("button", { name: /Medium/ }))
     await user.type(screen.getByLabelText(/Title/), "Rocket Bedtime")
-    await user.type(screen.getByLabelText("What should the story be about?"), "a rocket bedtime race")
+    await user.type(screen.getByLabelText("Your story idea"), "a rocket bedtime race")
     await user.click(screen.getByRole("button", { name: "✦ Grant my wishes" }))
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Rocket Bedtime" })).toBeInTheDocument())
@@ -79,7 +79,7 @@ describe("StoryGenerator", () => {
       customTitle: "Rocket Bedtime",
       includeImages: false,
     })
-    expect(screen.getByRole("link", { name: "Read Story" })).toHaveAttribute("href", "/library/story-123")
+    expect(screen.getByRole("link", { name: "Read it now" })).toHaveAttribute("href", "/library/story-123")
   })
 
   it("shows API errors", async () => {
