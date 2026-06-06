@@ -69,7 +69,6 @@ export function buildReferenceImagePrompt(profile: KidProfile): string {
     : profile.gender === "boy" ? "human boy"
     : "human child"
   const appearance = buildAppearanceSummary(profile.appearance)
-  const toy = buildToySummary(profile.toy)
 
   // Pose and framing matched to developmental stage so the model generates
   // the correct body type rather than defaulting to a standing toddler.
@@ -95,14 +94,28 @@ export function buildReferenceImagePrompt(profile: KidProfile): string {
   let desc = `${profile.name}, a ${ageLabel} ${humanGender}${infantExtras}`
   if (appearance) desc += ` with ${appearance}`
 
-  // Toy is described as a held object — explicitly separate from the character's body
-  const toyClause = toy
-    ? ` ${profile.name} is holding a toy plushie: ${toy}. The toy is a separate stuffed object in ${profile.name}'s hands, not part of ${profile.name}'s body or appearance.`
-    : ""
-
   const facingClause = isInfant ? "" : " Facing forward,"
 
-  return `${frameDesc} of ${desc}. ${profile.name} is a human child, not an animal.${toyClause}${facingClause} Simple white background, children's picture book character reference, clear and detailed facial features, consistent character design.`
+  return `${frameDesc} of ${desc}. ${profile.name} is a human child, not an animal.${facingClause} Simple white background, children's picture book character reference, clear and detailed facial features, consistent character design.`
+}
+
+// Builds the prompt for generating a profile picture using the character illustration as the
+// sole reference image. The toy is described in text to avoid visual feature blending from
+// multi-reference inputs.
+export function buildProfilePicturePrompt(
+  profile: Pick<KidProfile, "name" | "age" | "age_months" | "gender">,
+  toy: { name: string; description?: string | null } | null
+): string {
+  const name = profile.name
+  const pronoun = profile.gender === "girl" ? "her" : profile.gender === "boy" ? "his" : "their"
+
+  if (!toy) {
+    return `Children's picture book illustration. @Image1 is ${name}. Portrait of ${name}. ${name}'s appearance must exactly match @Image1. Soft warm cream background. Portrait orientation. Warm and friendly composition. No other characters.`
+  }
+
+  const toyDesc = toy.description ? `${toy.name} — ${toy.description}` : toy.name
+
+  return `Children's picture book illustration. @Image1 is ${name}. Portrait of ${name} with ${pronoun} treasured item, ${toyDesc}. ${name}'s appearance must exactly match @Image1. ${toy.name} is shown held gently or alongside ${name}. Soft warm cream background. Portrait orientation. Warm and friendly composition. No other characters.`
 }
 
 // Builds a detailed character description for image prompts when no reference image is available.
@@ -173,6 +186,60 @@ export function buildCharacterAnchorSlim(
 
   if (profiles.length === 1) return describe(profiles[0])
   return profiles.map(describe).join("; ")
+}
+
+function buildToyObjectDescription(toy: KidToy): {
+  objectPhrase: string
+  posePhrase: string
+} {
+  const combined = `${toy.name} ${toy.description ?? ""}`.toLowerCase()
+
+  if (/tiara|crown|wand|hat|cape|mask|glasses|bracelet|necklace|ring|bow|headband/.test(combined)) {
+    return {
+      objectPhrase: `a single ${toy.name} accessory object`,
+      posePhrase: "displayed alone, floating centered on a plain white background, not worn by or placed on any character or animal",
+    }
+  }
+
+  if (/game|console|controller|device|tablet|phone|remote/.test(combined)) {
+    return {
+      objectPhrase: `a single ${toy.name} handheld object`,
+      posePhrase: "displayed alone on a plain white background, no hands holding it, no character present",
+    }
+  }
+
+  if (/ball|frisbee|bat|racket/.test(combined)) {
+    return {
+      objectPhrase: `a single ${toy.name} toy object`,
+      posePhrase: "displayed alone on a plain white background, no character present",
+    }
+  }
+
+  if (/blanket|lovey|cloth|fabric|stuffed cloth/.test(combined)) {
+    return {
+      objectPhrase: `a single ${toy.name} comfort object`,
+      posePhrase: "displayed alone, softly folded or laid flat on a plain white background, no character present",
+    }
+  }
+
+  return {
+    objectPhrase: `a single ${toy.name} stuffed plushie toy`,
+    posePhrase: "displayed alone, sitting upright on a plain white background, no child or person present",
+  }
+}
+
+export function buildToyIllustrationPrompt(toy: KidToy): string {
+  const { objectPhrase, posePhrase } = buildToyObjectDescription(toy)
+  const descriptionClause = toy.description
+    ? ` ${toy.description}.`
+    : ""
+
+  return `${objectPhrase}.${descriptionClause} ${posePhrase}. Children's picture book illustration style, simple, clean, detailed. Plain white background. No characters, no animals, no hands, no people.`
+}
+
+// Builds a prompt for generating an isolated character reference portrait for story characters.
+export function buildStoryCharacterReferencePrompt(character: { name: string; description: string }): string {
+  return `Full body portrait of ${character.name}, ${character.description}. Simple white background, children's picture book character reference, clear and detailed, consistent character design. Single character only, no other characters present.`
 }
 
 // Fills template placeholders for a single profile

@@ -1,4 +1,6 @@
 import type { StoryPageScene, StoryVisualContext } from "@/lib/ai/prompt-builder/visual-context"
+import type { CharacterReference } from "@/lib/ai/providers/image/options"
+import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
 
 export const NEGATIVE_PROMPT =
   "animal features on children, animal ears on children, animal tails on children, fur on human characters, chipmunk features on child, cat features on child, dog features on child, child as animal, animal hybrid child, whiskers on human, child with tail"
@@ -26,12 +28,30 @@ export function buildStoryPagePrompt(input: {
     description: string
     appearsOnPages: number[]
   }[]
+  characterReferences?: CharacterReference[]
+  storyCharacterRefs?: CharacterReference[]
 }): string {
-  const { scene, visualContext, artStylePrefix, referenceAvailable, characterDetails, storyCharacters } = input
+  const {
+    scene,
+    visualContext,
+    artStylePrefix,
+    referenceAvailable,
+    characterDetails,
+    storyCharacters,
+    characterReferences,
+    storyCharacterRefs,
+  } = input
 
   const parts: string[] = []
 
   parts.push(artStylePrefix)
+
+  const allRefs = [...(characterReferences ?? []), ...(storyCharacterRefs ?? [])]
+  if (allRefs.length > 0) {
+    const { labels } = resolveCharacterReferences(allRefs)
+    const refLine = labels.map((label, i) => `@Image${i + 1} is ${label}.`).join(" ")
+    parts.push(`Reference images provided: ${refLine} Preserve each referenced person's visual identity and use the matching reference image for their appearance.`)
+  }
 
   const contextParts: string[] = []
   if (visualContext.setting) contextParts.push(visualContext.setting)
@@ -65,9 +85,12 @@ export function buildStoryPagePrompt(input: {
     parts.push(line)
   }
 
+  const storyCharsWithImageRef = new Set((storyCharacterRefs ?? []).map(r => r.name))
   const storyCharsOnPage = storyCharacters.filter(sc => sc.appearsOnPages.includes(scene.pageIndex))
   for (const sc of storyCharsOnPage) {
-    parts.push(`${sc.name} — ${sc.description}.`)
+    if (!storyCharsWithImageRef.has(sc.name)) {
+      parts.push(`${sc.name} — ${sc.description}.`)
+    }
   }
 
   if (scene.characters.length + storyCharsOnPage.length >= 3) {
@@ -78,7 +101,7 @@ export function buildStoryPagePrompt(input: {
 
   if (scene.mood) parts.push(`Mood: ${scene.mood}.`)
 
-  if (referenceAvailable) {
+  if (referenceAvailable || allRefs.length > 0) {
     parts.push("Profile character appearances are defined by the reference images — do not alter them.")
   }
 

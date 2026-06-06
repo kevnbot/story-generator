@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 import {
   buildCharacterAnchor,
   buildCharacterAnchorSlim,
+  buildProfilePicturePrompt,
   buildPromptSummary,
   buildReferenceImagePrompt,
+  buildToyIllustrationPrompt,
   fillPromptTemplateMulti,
   formatAge,
   joinNames,
@@ -64,9 +66,62 @@ describe("prompt builder helpers", () => {
     const slimAnchor = buildCharacterAnchorSlim([profile()], { Luna: "a yellow raincoat" }, new Set(["kid-1"]))
 
     expect(referencePrompt).toContain("Luna is a human child, not an animal")
-    expect(referencePrompt).toContain("The toy is a separate stuffed object")
+    expect(referencePrompt).toContain("Simple white background")
+    expect(referencePrompt).not.toContain("Moon Bear")
+    expect(referencePrompt).not.toContain("a silver stuffed bear")
+    expect(referencePrompt).not.toContain("plushie")
+    expect(referencePrompt).not.toContain("stuffed")
+    expect(referencePrompt).not.toContain("The toy is a separate")
     expect(anchor).toContain("a separate stuffed object Luna holds, not part of their body")
     expect(slimAnchor).toBe("Luna (human girl) wearing a yellow raincoat")
+  })
+
+  it("buildProfilePicturePrompt describes toy in text without @Image2", () => {
+    const result = buildProfilePicturePrompt(profile(), { name: "Uni", description: "a stuffed rainbow unicorn" })
+    expect(result).toContain("@Image1")
+    expect(result).not.toContain("@Image2")
+    expect(result).toContain("Uni")
+    expect(result).toContain("a stuffed rainbow unicorn")
+  })
+
+  it("buildProfilePicturePrompt omits @Image2 and treasured item language when no toy", () => {
+    const result = buildProfilePicturePrompt(profile(), null)
+    expect(result).toContain("@Image1")
+    expect(result).not.toContain("@Image2")
+    expect(result).not.toContain("treasured item")
+  })
+
+  it("buildProfilePicturePrompt handles toy with no description", () => {
+    const result = buildProfilePicturePrompt(profile(), { name: "Uni", description: null })
+    expect(result).toContain("Uni")
+    expect(result).not.toContain("@Image2")
+  })
+
+  it("buildToyIllustrationPrompt — tiara/accessory uses accessory phrasing", () => {
+    const result = buildToyIllustrationPrompt({ name: "rainbow tiara", description: "rainbow colors with sparkly gems" })
+    expect(result).toContain("accessory object")
+    expect(result).toContain("not worn by or placed on any character or animal")
+    expect(result).toContain("No characters, no animals")
+    expect(result).not.toContain("plushie")
+    expect(result).not.toContain("companion")
+  })
+
+  it("buildToyIllustrationPrompt — stuffed animal uses plushie phrasing", () => {
+    const result = buildToyIllustrationPrompt({ name: "Moon Bear", description: "a silver stuffed bear" })
+    expect(result).toContain("stuffed plushie toy")
+    expect(result).toContain("sitting upright")
+    expect(result).toContain("No characters, no animals")
+  })
+
+  it("buildToyIllustrationPrompt — game console uses handheld phrasing", () => {
+    const result = buildToyIllustrationPrompt({ name: "game console", description: undefined })
+    expect(result).toContain("handheld object")
+    expect(result).toContain("no hands holding it")
+  })
+
+  it("buildToyIllustrationPrompt — no description does not crash and includes toy name", () => {
+    const result = buildToyIllustrationPrompt({ name: "Uni", description: undefined })
+    expect(result).toContain("Uni")
   })
 
   it("fills multi-profile template placeholders", () => {
