@@ -1,7 +1,6 @@
 import type { KidProfile } from "@/types"
 
 export type ProfileReferenceStorageField =
-  | "combined_reference_path"
   | "character_illustration_path"
   | "reference_image_path"
   | "reference_image_url"
@@ -16,15 +15,13 @@ export interface ProfileReference {
 
 export type ProfileReferenceProfile = Pick<
   KidProfile,
-  "id" | "name" | "reference_image_path" | "reference_image_url" | "combined_reference_path" | "character_illustration_path"
+  "id" | "name" | "reference_image_path" | "reference_image_url" | "character_illustration_path"
 > & {
-  combined_reference_url?: string | null
   character_illustration_url?: string | null
 }
 
 export function getProfileReferencePaths(profiles: ProfileReferenceProfile[]): string[] {
   return profiles.flatMap((profile) => [
-    profile.combined_reference_path,
     profile.character_illustration_path,
     profile.reference_image_path,
   ]).filter((path): path is string => Boolean(path))
@@ -40,11 +37,6 @@ export function resolveProfileReferences(
       path?: string | null
       url?: string | null
     }> = [
-      {
-        field: "combined_reference_path",
-        path: profile.combined_reference_path,
-        url: profile.combined_reference_url,
-      },
       {
         field: "character_illustration_path",
         path: profile.character_illustration_path,
