@@ -5,7 +5,7 @@ import { LegalPage, LegalSection, LegalP, LegalList } from "@/components/marketi
 export const metadata: Metadata = {
   title: "Terms of Use — My Genie Stories",
   description:
-    "The terms and conditions for using My Genie Stories, the personalized AI bedtime story service for families.",
+    "The terms and conditions for using My Genie Stories, the personalized AI story service for families.",
 }
 
 export default function TermsPage() {
@@ -19,99 +19,131 @@ export default function TermsPage() {
         <Link href="/privacy" className="font-medium underline" style={{ color: "#7c3aed" }}>
           Privacy Policy
         </Link>
-        . If you do not agree, please do not use the Service.
+        . If you do not agree, please do not use the Service. The Service is currently available to
+        residents of the United States only.
       </LegalP>
 
-      <LegalSection heading="1. Who can use the Service">
+      <LegalSection heading="1. Closed beta">
         <LegalP>
-          The Service is intended for use by adults (18 years or older) who create stories for the
-          children in their care. You are responsible for supervising any child who uses or views
-          content created through your account. By using the Service, you represent that you are at
-          least 18 years old and have the authority to enter into these Terms.
+          The Service is currently in <strong>closed beta</strong>. Access is by invitation only.
+          By using the Service, you acknowledge you are using an early, pre-release version that is
+          still under active development. Features may change or be removed without notice. Story
+          data, profiles, and account data may be lost during the beta period due to updates or
+          infrastructure changes — do not rely on the Service as your only copy of content you want
+          to keep. This section will be removed when the Service exits beta.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="2. Your account">
+      <LegalSection heading="2. Who can use the Service">
         <LegalP>
-          You are responsible for the information you provide and for all activity that occurs under
-          your account. Keep your password secure and notify us promptly of any unauthorized use.
-          You may add profiles for your children and family members; you are responsible for having
-          the right to provide any information you enter about them.
+          The Service is for adults (18 or older) creating stories on behalf of children in their
+          care. Children do not create accounts or interact with the Service directly. By using the
+          Service, you represent that you are at least 18 years old, located in the United States,
+          and have the authority to enter into these Terms.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="3. Wishes, plans, and payments">
+      <LegalSection heading="3. Your account">
+        <LegalP>
+          You are responsible for the information you provide and for all activity under your
+          account. Keep your password secure and notify us promptly of any unauthorized use. You
+          may add profiles for children and family members; you are responsible for having the right
+          to provide any information you enter about them.
+        </LegalP>
+      </LegalSection>
+
+      <LegalSection heading="4. Wishes, plans, and payments">
         <LegalList
           items={[
-            "Stories are created using “wishes” (credits). New accounts receive a number of free wishes, and additional wishes are available through paid plans.",
-            "Paid plans renew automatically for the period you select until cancelled. You can manage or cancel your subscription at any time from your billing settings.",
-            "Except where required by law, wishes and fees are non-refundable, and wishes have no cash value.",
+            "Stories are created using \u201cwishes\u201d (credits). New accounts receive free wishes; additional wishes are available through paid plans.",
+            "Paid plans renew automatically for the period you select until cancelled. You can manage or cancel at any time from your billing settings.",
+            "Except where required by law, wishes and fees are non-refundable and wishes have no cash value.",
+            "When you purchase wishes, we make a charitable book donation on behalf of the company to a designated partner. This donation is made by us \u2014 you are not making the donation directly and are not entitled to a tax deduction. We retain full discretion over the program, including the amount, partner, and continuation.",
             "We may change pricing or plan features; we will provide notice of material changes before they take effect for you.",
           ]}
         />
       </LegalSection>
 
-      <LegalSection heading="4. Stories and content">
+      <LegalSection heading="5. AI-generated content">
         <LegalP>
-          The Service uses artificial intelligence to generate stories and illustrations based on
-          the inputs you provide. As between you and us, the stories you generate are yours to read,
-          print, and share for personal, non-commercial family use. You are responsible for the
-          inputs you submit and for reviewing generated content before sharing it with children.
+          All stories and illustrations are generated by artificial intelligence. Please keep the
+          following in mind:
         </LegalP>
-        <LegalP>
-          AI-generated content may occasionally be inaccurate, unexpected, or not to your taste.
-          While we build in guardrails to keep stories age-appropriate, you should review content
-          before reading it to a child.
-        </LegalP>
-      </LegalSection>
-
-      <LegalSection heading="5. Acceptable use">
-        <LegalP>You agree not to use the Service to:</LegalP>
         <LegalList
           items={[
-            "Create content that is unlawful, harmful, hateful, sexually explicit, or that exploits or endangers children.",
-            "Upload information or images you do not have the right to use, or that infringe someone else’s rights.",
-            "Attempt to disrupt, reverse-engineer, or gain unauthorized access to the Service.",
-            "Resell or commercially exploit the Service or generated content without our permission.",
+            "AI-generated content is inherently unpredictable. Stories may occasionally be inaccurate, unexpected, nonsensical, or not to your taste \u2014 this is a characteristic of the technology, not a defect.",
+            "We do not guarantee that generated content will be age-appropriate in every case. You are responsible for reviewing stories before sharing them with children.",
+            "Stories and illustrations are delivered automatically. No human reviews every piece of generated content before it reaches you.",
+            "All character illustrations are generated from text descriptions only. No photographs of children are used or stored. Illustrations are entirely synthetic and do not constitute realistic likenesses of real people.",
+            "We use automated content filters to keep stories appropriate, but these are not perfect. Please report any concerning content to us.",
           ]}
         />
       </LegalSection>
 
-      <LegalSection heading="6. Intellectual property">
+      <LegalSection heading="6. Content and license">
         <LegalP>
-          The Service, including its software, branding, and mascot, is owned by My Genie Stories
+          You retain ownership of the descriptions and story ideas you submit. For the AI-generated
+          stories and illustrations the Service produces:
+        </LegalP>
+        <LegalList
+          items={[
+            "You may read, print, and share stories for personal, non-commercial family use.",
+            "You may not sell, sublicense, or commercially exploit generated stories.",
+            "By generating stories through the Service, you grant My Genie Stories a perpetual, worldwide, royalty-free license to use, reproduce, adapt, and display generated story content for purposes including operating and improving the Service, training AI models, and marketing. We will not use your child\u2019s name in public marketing without your separate consent. This license does not extend to child profile descriptions, which are used only to generate your stories.",
+          ]}
+        />
+      </LegalSection>
+
+      <LegalSection heading="7. Acceptable use">
+        <LegalP>You agree not to use the Service to:</LegalP>
+        <LegalList
+          items={[
+            "Create content that is unlawful, harmful, hateful, sexually explicit, or that exploits or endangers children.",
+            "Submit descriptions intended to produce depictions of identifiable real individuals without their consent.",
+            "Upload information you do not have the right to use, or that infringes someone else\u2019s rights.",
+            "Attempt to disrupt, reverse-engineer, or gain unauthorized access to the Service.",
+            "Resell or commercially exploit the Service or generated content without our permission.",
+            "Use the Service if you are located outside the United States.",
+          ]}
+        />
+      </LegalSection>
+
+      <LegalSection heading="8. Intellectual property">
+        <LegalP>
+          The Service, including its software, branding, and mascots, is owned by My Genie Stories
           and protected by intellectual property laws. These Terms do not grant you any right to our
           trademarks or branding except as needed to use the Service.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="7. Disclaimers and limitation of liability">
+      <LegalSection heading="9. Disclaimers and limitation of liability">
         <LegalP>
           The Service is provided &ldquo;as is&rdquo; without warranties of any kind, to the fullest
-          extent permitted by law. To the maximum extent permitted by law, My Genie Stories will not
-          be liable for any indirect, incidental, or consequential damages, and our total liability
-          relating to the Service will not exceed the amount you paid us in the twelve months before
-          the claim.
+          extent permitted by law. We do not warrant that the Service will be uninterrupted,
+          error-free, or that generated content will meet your expectations. To the maximum extent
+          permitted by law, My Genie Stories will not be liable for any indirect, incidental, or
+          consequential damages, and our total liability relating to the Service will not exceed the
+          amount you paid us in the twelve months before the claim.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="8. Termination">
+      <LegalSection heading="10. Termination">
         <LegalP>
           You may stop using the Service and delete your account at any time. We may suspend or
           terminate access if you violate these Terms or use the Service in a way that could harm
-          others or us.
+          others or us. Our license to use generated content survives termination.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="9. Changes to these Terms">
+      <LegalSection heading="11. Changes to these Terms">
         <LegalP>
           We may update these Terms from time to time. If we make material changes, we will update
-          the &ldquo;Last updated&rdquo; date above and, where appropriate, notify you. Your
-          continued use of the Service after changes take effect means you accept the updated Terms.
+          the &ldquo;Last updated&rdquo; date above and notify you. Your continued use of the
+          Service after changes take effect means you accept the updated Terms.
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="10. Contact us">
+      <LegalSection heading="12. Contact us">
         <LegalP>
           Questions about these Terms? Contact us at{" "}
           <a href="mailto:support@mygeniestories.com" className="font-medium underline" style={{ color: "#7c3aed" }}>
