@@ -6,9 +6,10 @@ import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 import { getImageProvider, isImageProviderKeyAvailable } from "@/lib/ai/providers/image/registry"
 import { DEFAULT_IMAGE_PROVIDER_ID } from "@/lib/ai/providers/image/options"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
-import { joinNames, buildCharacterAnchor, formatAge } from "@/lib/ai/prompt-builder"
+import { joinNames, buildCharacterAnchor, buildStoryCharacterReferencePrompt, formatAge } from "@/lib/ai/prompt-builder"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
-import { getProfileReferencePaths, resolveProfileReferences } from "@/lib/ai/profile-references"
+import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
+import type { CharacterReference } from "@/lib/ai/providers/image/options"
 import { checkStoryRateLimit } from "@/lib/rate-limit"
 import { config } from "@/lib/config"
 import {
@@ -23,6 +24,25 @@ import { FEATURES } from "@/lib/config/features"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
 const IMAGE_GENERATION_START_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 5000
+
+type ExtKidProfile = KidProfile & {
+  toy_reference_image_path?: string | null
+}
+
+function falPost(model: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`https://fal.run/${model}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${process.env.FAL_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+function extractFalUrl(data: Record<string, unknown>): string | null {
+  return (data as { images?: { url: string }[] }).images?.[0]?.url ?? null
+}
 
 function buildAppearanceDescription(profile: KidProfile): string {
   const parts: string[] = []
@@ -147,11 +167,11 @@ export async function POST(request: NextRequest) {
       : Promise.resolve({ data: null }),
   ])
 
-  const profileRows = profilesResult.data as KidProfile[] | null
+  const profileRows = profilesResult.data as ExtKidProfile[] | null
   const profilesById = new Map((profileRows ?? []).map((profile) => [profile.id, profile]))
   const profiles = enforcedProfileIds
     .map((id) => profilesById.get(id))
-    .filter((profile): profile is KidProfile => Boolean(profile))
+    .filter((profile): profile is ExtKidProfile => Boolean(profile))
   if (!profiles?.length) return NextResponse.json({ error: "Profiles not found" }, { status: 404 })
   if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 })
 
@@ -187,7 +207,7 @@ export async function POST(request: NextRequest) {
   const storyType = storyTypeResult.data as StoryTypeRow
 
   const profilesMissingIllustrations = profiles.filter(
-    p => !p.combined_reference_path && !p.character_illustration_path && !p.reference_image_path && !p.reference_image_url
+    p => !p.character_illustration_path && !p.reference_image_path && !p.reference_image_url
   )
   if (profilesMissingIllustrations.length > 0) {
     const missingNames = profilesMissingIllustrations.map(p => p.name).join(", ")
@@ -197,27 +217,60 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const characterReferences: CharacterReference[] = []
   let referenceImageUrls: string[] = []
   let referenceImageLabels: string[] = []
-  if (imagesEnabled && selectedImageProvider.supportsReferenceImages) {
-    const signedReferenceUrlsByPath = await createSignedImageUrlsMap(
-      service,
-      getProfileReferencePaths(profiles)
-    )
-    const profileReferences = resolveProfileReferences(profiles, signedReferenceUrlsByPath)
-    const missingReferenceNames = profileReferences
-      .filter((ref) => !ref.url)
-      .map((ref) => ref.name)
 
-    if (missingReferenceNames.length > 0) {
+  if (imagesEnabled && selectedImageProvider.supportsReferenceImages) {
+    const pathsToSign: string[] = []
+    for (const p of profiles) {
+      const charPath = p.character_illustration_path ?? p.reference_image_path
+      if (charPath) pathsToSign.push(charPath)
+      if (p.toy_reference_image_path) pathsToSign.push(p.toy_reference_image_path)
+    }
+
+    const signedUrlsMap = pathsToSign.length > 0
+      ? await createSignedImageUrlsMap(service, pathsToSign)
+      : new Map<string, string>()
+
+    for (const p of profiles) {
+      const charPath = p.character_illustration_path ?? p.reference_image_path
+      const charUrl = charPath ? signedUrlsMap.get(charPath) : null
+
+      if (!charUrl) {
+        Sentry.logger.warn("Character illustration URL could not be resolved", {
+          profile_id: p.id,
+          profile_name: p.name,
+        })
+        continue
+      }
+
+      characterReferences.push({
+        name: p.name,
+        imageUrl: charUrl,
+        role: "profile",
+      })
+
+      if (p.toy_reference_image_path) {
+        const toyUrl = signedUrlsMap.get(p.toy_reference_image_path)
+        if (toyUrl) {
+          characterReferences.push({
+            name: p.toy?.name ?? "toy",
+            imageUrl: toyUrl,
+            role: "toy",
+            boundTo: p.name,
+            description: p.toy?.description ?? undefined,
+          })
+        }
+      }
+    }
+
+    if (characterReferences.length === 0) {
       return NextResponse.json(
-        { error: `Reference images could not be resolved for: ${missingReferenceNames.join(", ")}.` },
+        { error: "Reference images could not be resolved for the selected profiles." },
         { status: 400 }
       )
     }
-
-    referenceImageUrls = profileReferences.map((ref) => ref.url!)
-    referenceImageLabels = profileReferences.map((ref) => `${ref.name}'s profile reference`)
   }
 
   // Determine version number
@@ -349,7 +402,6 @@ Each page must describe one clear visual moment — where the characters are, wh
         if (imagesEnabled) {
           const storyPages = splitStoryPages(fullText)
           const imageProvider = getImageProvider(imageProviderId)
-          const referencesAvailableForProvider = imageProvider.supportsReferenceImages && referenceImageUrls.length > 0
 
           // Strip trailing comma/whitespace from prompt_prefix so it doesn't create
           // double-comma artifacts when composed into the full image prompt.
@@ -363,6 +415,55 @@ Each page must describe one clear visual moment — where the characters are, wh
             .map(p => p.toy?.name)
             .filter((name): name is string => Boolean(name) && name !== "their favorite toy")
           const { result: visualContext } = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
+
+          if (imagesEnabled && selectedImageProvider.supportsReferenceImages && visualContext.storyCharacters.length > 0) {
+            const ranked = [...visualContext.storyCharacters]
+              .sort((a, b) => b.appearsOnPages.length - a.appearsOnPages.length)
+              .slice(0, 2)
+
+            send({ type: "status", message: "Preparing story characters…" })
+
+            const storyCharRefResults = await Promise.all(
+              ranked.map(async (sc) => {
+                if (!process.env.FAL_KEY) return null
+                const prompt = buildStoryCharacterReferencePrompt(sc)
+                try {
+                  const response = await falPost("fal-ai/flux/dev", {
+                    prompt,
+                    image_size: "portrait_4_3",
+                    num_inference_steps: 28,
+                    guidance_scale: 7.0,
+                    num_images: 1,
+                  })
+                  if (!response.ok) return null
+                  const data = await response.json()
+                  const url = extractFalUrl(data)
+                  if (!url) return null
+                  return { sc, url }
+                } catch {
+                  return null
+                }
+              })
+            )
+
+            for (const result of storyCharRefResults) {
+              if (!result) continue
+              characterReferences.push({
+                name: result.sc.name,
+                imageUrl: result.url,
+                role: "story_character",
+                description: result.sc.description,
+              })
+            }
+          }
+
+          if (characterReferences.length > 0) {
+            const resolved = resolveCharacterReferences(characterReferences)
+            referenceImageUrls = resolved.urls
+            referenceImageLabels = resolved.labels
+          }
+
+          const referencesAvailableForProvider = imageProvider.supportsReferenceImages && referenceImageUrls.length > 0
 
           characterAnchor = buildCharacterAnchor(profiles, visualContext.outfits)
 
@@ -402,6 +503,7 @@ Each page must describe one clear visual moment — where the characters are, wh
               referenceAvailable: referencesAvailableForProvider,
               characterDetails,
               storyCharacters: visualContext.storyCharacters,
+              characterReferences,
             })
           })
 
@@ -439,31 +541,33 @@ Each page must describe one clear visual moment — where the characters are, wh
               })
             }
           }
-          for (const [sceneIndex, result] of generatedResults.entries()) {
-            if (result.url === null || result.isBlackImage) {
-              Sentry.logger.warn("Image generation using error placeholder", {
-                provider: imageProviderId,
-                scene_index: sceneIndex,
-                job_id: job.id,
-                reason: result.url === null ? "null_url" : "black_image",
+          const storageResults = await Promise.all(
+            generatedResults.map(async (result, sceneIndex) => {
+              if (result.url === null || result.isBlackImage) {
+                Sentry.logger.warn("Image generation using error placeholder", {
+                  provider: imageProviderId,
+                  scene_index: sceneIndex,
+                  job_id: job.id,
+                  reason: result.url === null ? "null_url" : "black_image",
+                })
+                return { url: STORY_IMAGE_ERROR_PATH, caption: null, scene_index: sceneIndex }
+              }
+
+              const storedPath = await copyRemoteImageToStoragePath({
+                supabase: service,
+                sourceUrl: result.url,
+                buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
               })
-              images.push({ url: STORY_IMAGE_ERROR_PATH, caption: null, scene_index: sceneIndex })
-              continue
-            }
 
-            const storedPath = await copyRemoteImageToStoragePath({
-              supabase: service,
-              sourceUrl: result.url,
-              buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
+              if (storedPath) {
+                return { path: storedPath, caption: null, scene_index: sceneIndex }
+              } else {
+                return { url: result.url, caption: null, scene_index: sceneIndex }
+              }
             })
+          )
 
-            if (storedPath) {
-              images.push({ path: storedPath, caption: null, scene_index: sceneIndex })
-            } else {
-              // Keep legacy URL fallback only when storage upload fails.
-              images.push({ url: result.url, caption: null, scene_index: sceneIndex })
-            }
-          }
+          images.push(...storageResults)
         }
 
         const { data: story } = await service
@@ -503,6 +607,10 @@ Each page must describe one clear visual moment — where the characters are, wh
               model: "claude-sonnet-4-6",
               image_provider: imagesEnabled ? imageProviderId : undefined,
               image_model: imagesEnabled ? getImageProvider(imageProviderId).modelId : "",
+              story_character_refs: characterReferences
+                .filter(r => r.role === "story_character")
+                .map(r => ({ name: r.name, description: r.description })),
+              reference_image_count: referenceImageUrls.length,
             },
             credits_used: creditsNeeded,
           })

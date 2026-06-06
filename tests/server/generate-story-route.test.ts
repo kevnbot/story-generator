@@ -289,8 +289,7 @@ describe("POST /api/generate-story", () => {
         name: "Ava",
         gender: "girl",
         reference_image_path: null,
-        character_illustration_path: null,
-        combined_reference_path: "illustrations/ava-combined.jpg",
+        character_illustration_path: "illustrations/ava-character.jpg",
       },
     ]
     const { POST } = await import("@/app/api/generate-story/route")
@@ -316,17 +315,17 @@ describe("POST /api/generate-story", () => {
       referenceImageUrls: [
         "https://signed.local/illustrations/luna.jpg",
         "https://signed.local/illustrations/max-character.jpg",
-        "https://signed.local/illustrations/ava-combined.jpg",
+        "https://signed.local/illustrations/ava-character.jpg",
       ],
       referenceImageLabels: [
-        "Luna's profile reference",
-        "Max's profile reference",
-        "Ava's profile reference",
+        "Luna",
+        "Max",
+        "Ava",
       ],
     })
   })
 
-  it("fails before generation when a selected profile reference cannot be resolved", async () => {
+  it("fails before generation when no profile reference images can be resolved", async () => {
     mocks.state.imageKeyAvailable = true
     mocks.state.profiles = [
       {
@@ -342,6 +341,7 @@ describe("POST /api/generate-story", () => {
         reference_image_path: "illustrations/max.jpg",
       },
     ]
+    mocks.state.signedUrlMissingPaths.add("illustrations/luna.jpg")
     mocks.state.signedUrlMissingPaths.add("illustrations/max.jpg")
     const { POST } = await import("@/app/api/generate-story/route")
 
@@ -359,7 +359,7 @@ describe("POST /api/generate-story", () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: "Reference images could not be resolved for: Max.",
+      error: "Reference images could not be resolved for the selected profiles.",
     })
     expect(mocks.generateStoryStream).not.toHaveBeenCalled()
     expect(mocks.calls).not.toContainEqual(
