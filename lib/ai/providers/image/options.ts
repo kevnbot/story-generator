@@ -1,5 +1,13 @@
 export type ImageReferenceMode = "none" | "single" | "multi"
 
+export interface CharacterReference {
+  name: string
+  imageUrl: string
+  role: "profile" | "toy" | "story_character"
+  boundTo?: string
+  description?: string
+}
+
 export type ImageProviderId =
   | "fal-kontext"
   | "fal-kontext-multi"
@@ -22,7 +30,7 @@ export interface ImageProviderMetadata {
   expectedTime: string
 }
 
-export const DEFAULT_IMAGE_PROVIDER_ID: ImageProviderId = "fal-kontext-multi"
+export const DEFAULT_IMAGE_PROVIDER_ID: ImageProviderId = "fal-nano-banana-2"
 
 export const IMAGE_PROVIDER_METADATA: Record<ImageProviderId, ImageProviderMetadata> = {
   "fal-kontext": {

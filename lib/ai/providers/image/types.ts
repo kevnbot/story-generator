@@ -1,9 +1,10 @@
-import type { ImageProviderId, ImageReferenceMode } from "./options"
+import type { ImageProviderId, ImageReferenceMode, CharacterReference } from "./options"
 
 export interface ImageGenerationOptions {
   referenceImageUrl?: string | null
   referenceImageUrls?: string[] | null
   referenceImageLabels?: string[] | null
+  characterReferences?: CharacterReference[]
   seed?: number
   size?: "landscape_4_3" | "portrait_4_3" | "square"
   negativePrompt?: string

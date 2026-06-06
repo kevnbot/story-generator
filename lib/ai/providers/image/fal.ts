@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/nextjs"
-import { IMAGE_PROVIDER_METADATA, type ImageProviderId, type ImageProviderMetadata } from "./options"
+import { IMAGE_PROVIDER_METADATA, type ImageProviderId, type ImageProviderMetadata, type CharacterReference } from "./options"
 import type { ImageProvider, ImageGenerationOptions, ImageResult } from "./types"
 import {
   ASPECT_RATIO_MAP,
@@ -69,6 +69,27 @@ function extractUrl(data: Record<string, unknown> | null): string | null {
 }
 
 // ─── Reference helpers ────────────────────────────────────────────────────────
+
+export function resolveCharacterReferences(refs: CharacterReference[]): {
+  urls: string[]
+  labels: string[]
+} {
+  const urls = refs.map(ref => ref.imageUrl)
+  const labels = refs.map(ref => {
+    if (ref.role === "profile") {
+      return ref.name
+    }
+    if (ref.role === "toy") {
+      const base = ref.boundTo
+        ? `${ref.name}, ${ref.boundTo}'s treasured item`
+        : ref.name
+      return ref.description ? `${base} — ${ref.description}` : base
+    }
+    // role === "story_character"
+    return ref.description ? `${ref.name} — ${ref.description}` : ref.name
+  })
+  return { urls, labels }
+}
 
 export function buildKlingReferencePrompt(prompt: string, labels: string[]): string {
   if (labels.length === 0 || /@Image(?:\d+)?/.test(prompt)) return prompt

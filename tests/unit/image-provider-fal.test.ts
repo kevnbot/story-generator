@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildFalRequest, buildKlingReferencePrompt } from "@/lib/ai/providers/image/fal"
+import { buildFalRequest, buildKlingReferencePrompt, resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
 
 describe("fal image provider request builder", () => {
   it("builds single-reference Kontext requests with image_url", () => {
@@ -55,5 +55,53 @@ describe("fal image provider request builder", () => {
       "@Image1 is Luna. @Image2 is Max. Preserve each referenced person's identity and use the matching reference image for their appearance. paint the bedtime page"
     )
     expect(buildKlingReferencePrompt("Keep @Image1 consistent", ["Luna"])).toBe("Keep @Image1 consistent")
+  })
+})
+
+describe("resolveCharacterReferences", () => {
+  it("builds correct labels for a single profile with toy", () => {
+    const { urls, labels } = resolveCharacterReferences([
+      { name: "Emma", imageUrl: "https://example.com/emma.jpg", role: "profile" },
+      { name: "Uni", imageUrl: "https://example.com/uni.jpg", role: "toy", boundTo: "Emma", description: "a stuffed rainbow unicorn" },
+    ])
+    expect(urls).toEqual(["https://example.com/emma.jpg", "https://example.com/uni.jpg"])
+    expect(labels).toEqual(["Emma", "Uni, Emma's treasured item — a stuffed rainbow unicorn"])
+  })
+
+  it("builds correct labels and ordering for multi-profile (kid1, toy1, kid2, toy2)", () => {
+    const { urls, labels } = resolveCharacterReferences([
+      { name: "Emma", imageUrl: "https://example.com/emma.jpg", role: "profile" },
+      { name: "Uni", imageUrl: "https://example.com/uni.jpg", role: "toy", boundTo: "Emma", description: "a stuffed rainbow unicorn" },
+      { name: "Jake", imageUrl: "https://example.com/jake.jpg", role: "profile" },
+      { name: "Rocket", imageUrl: "https://example.com/rocket.jpg", role: "toy", boundTo: "Jake" },
+    ])
+    expect(urls).toEqual([
+      "https://example.com/emma.jpg",
+      "https://example.com/uni.jpg",
+      "https://example.com/jake.jpg",
+      "https://example.com/rocket.jpg",
+    ])
+    expect(labels).toEqual([
+      "Emma",
+      "Uni, Emma's treasured item — a stuffed rainbow unicorn",
+      "Jake",
+      "Rocket, Jake's treasured item",
+    ])
+  })
+
+  it("builds correct label for a story character ref", () => {
+    const { urls, labels } = resolveCharacterReferences([
+      { name: "Pip", imageUrl: "https://example.com/pip.jpg", role: "story_character", description: "a tiny clockwork mouse with brass gears" },
+    ])
+    expect(urls).toEqual(["https://example.com/pip.jpg"])
+    expect(labels).toEqual(["Pip — a tiny clockwork mouse with brass gears"])
+  })
+
+  it("handles a single profile with no toy", () => {
+    const { urls, labels } = resolveCharacterReferences([
+      { name: "Luna", imageUrl: "https://example.com/luna.jpg", role: "profile" },
+    ])
+    expect(urls).toEqual(["https://example.com/luna.jpg"])
+    expect(labels).toEqual(["Luna"])
   })
 })
