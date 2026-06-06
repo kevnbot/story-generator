@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import * as Sentry from "@sentry/nextjs"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { createSignedImageUrlsMap } from "@/lib/storage/images"
 import { getProfileReferencePaths, resolveProfileReferences } from "@/lib/ai/profile-references"
+import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
+import type { CharacterReference } from "@/lib/ai/providers/image/options"
 
 type WorkbenchReferenceProfile = {
   id: string
@@ -13,6 +16,9 @@ type WorkbenchReferenceProfile = {
   combined_reference_url?: string | null
   character_illustration_path: string | null
   character_illustration_url?: string | null
+  toy_reference_image_path: string | null
+  toy_reference_image_url?: string | null
+  toy?: { name?: string; description?: string } | null
 }
 
 export async function POST(request: NextRequest) {
@@ -33,7 +39,8 @@ export async function POST(request: NextRequest) {
     .select(
       "id, name, reference_image_path, reference_image_url, " +
       "combined_reference_path, combined_reference_url, " +
-      "character_illustration_path, character_illustration_url"
+      "character_illustration_path, character_illustration_url, " +
+      "toy_reference_image_path, toy_reference_image_url, toy"
     )
     .in("id", profileIds)
     .is("deleted_at", null)
@@ -45,26 +52,78 @@ export async function POST(request: NextRequest) {
     .filter((profile): profile is WorkbenchReferenceProfile => Boolean(profile))
   if (!profiles.length) return NextResponse.json({ error: "Profiles not found" }, { status: 404 })
 
-  const signedUrlsMap = await createSignedImageUrlsMap(service, getProfileReferencePaths(profiles))
+  // Collect storage paths for batch signing
+  const storagePaths: string[] = [
+    ...getProfileReferencePaths(profiles),
+    ...profiles.flatMap(p => p.toy_reference_image_path ? [p.toy_reference_image_path] : []),
+  ]
+  const signedUrlsMap = await createSignedImageUrlsMap(service, storagePaths)
+
+  // profileRefs: keep existing shape for Stage 4a display
   const profileRefs = resolveProfileReferences(profiles, signedUrlsMap)
-  const missingNames = profileRefs
-    .filter((ref) => !ref.url)
-    .map((ref) => ref.name)
-  if (missingNames.length > 0) {
-    return NextResponse.json(
-      { error: `Reference images could not be resolved for: ${missingNames.join(", ")}.` },
-      { status: 400 }
-    )
+
+  const characterReferences: CharacterReference[] = []
+
+  for (const profile of profiles) {
+    // Resolve character illustration: character_illustration_path → reference_image_path → skip
+    let characterUrl: string | null = null
+    if (profile.character_illustration_path) {
+      characterUrl = signedUrlsMap.get(profile.character_illustration_path) ?? null
+    }
+    if (!characterUrl && profile.reference_image_path) {
+      characterUrl = signedUrlsMap.get(profile.reference_image_path) ?? null
+    }
+
+    if (!characterUrl) {
+      Sentry.logger.warn("build-reference: character illustration not found for profile", {
+        profile_id: profile.id,
+        profile_name: profile.name,
+      })
+      continue
+    }
+
+    characterReferences.push({
+      name: profile.name,
+      imageUrl: characterUrl,
+      role: "profile",
+    })
+
+    // Resolve toy illustration: toy_reference_image_path → skip (not fatal)
+    const toyName = profile.toy?.name
+    if (toyName) {
+      let toyUrl: string | null = null
+      if (profile.toy_reference_image_path) {
+        toyUrl = signedUrlsMap.get(profile.toy_reference_image_path) ?? profile.toy_reference_image_url ?? null
+      } else if (profile.toy_reference_image_url) {
+        toyUrl = profile.toy_reference_image_url
+      }
+
+      if (!toyUrl) {
+        Sentry.logger.warn("build-reference: toy illustration not found for profile", {
+          profile_id: profile.id,
+          profile_name: profile.name,
+          toy_name: toyName,
+        })
+      } else {
+        characterReferences.push({
+          name: toyName,
+          imageUrl: toyUrl,
+          role: "toy",
+          boundTo: profile.name,
+          ...(profile.toy?.description ? { description: profile.toy.description } : {}),
+        })
+      }
+    }
   }
 
-  const referenceImageRefs = profileRefs.filter((ref) => ref.url)
-  const referenceImageUrls = referenceImageRefs.map((ref) => ref.url!)
-  const referenceImageLabels = referenceImageRefs.map((ref) => `${ref.name}'s profile reference`)
+  const { urls: referenceImageUrls, labels: referenceImageLabels } = resolveCharacterReferences(characterReferences)
 
   return NextResponse.json({
+    characterReferences,
     profileRefs,
     referenceImageUrls,
     referenceImageLabels,
+    storyCharacterRefs: [] as CharacterReference[],
     compositingSteps: [],
     baseReferenceUrl: referenceImageUrls[0] ?? null,
     styleTransfer: null,

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { getImageProvider } from "@/lib/ai/providers/image/registry"
+import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
+import type { CharacterReference } from "@/lib/ai/providers/image/options"
 
 interface ImageAttemptLog {
   attempt: number
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest) {
   const referenceImageUrl = body?.referenceImageUrl as string | undefined
   const referenceImageUrls = body?.referenceImageUrls as string[] | undefined
   const referenceImageLabels = body?.referenceImageLabels as string[] | undefined
+  const characterReferences = body?.characterReferences as CharacterReference[] | undefined
   const imageProvider = body?.imageProvider as string | undefined
   const pageIndex = body?.pageIndex as number | undefined
 
@@ -58,15 +61,23 @@ export async function POST(request: NextRequest) {
   if (pageIndex === undefined) return NextResponse.json({ error: "pageIndex required" }, { status: 400 })
 
   const provider = getImageProvider(imageProvider)
-  const resolvedReferenceUrls = [
+
+  let finalReferenceUrls = [
     ...(referenceImageUrls ?? []),
     ...(referenceImageUrl ? [referenceImageUrl] : []),
   ].filter((url, index, urls) => url.trim() && urls.indexOf(url) === index)
+  let finalReferenceLabels = referenceImageLabels
 
-  if (provider.supportsReferenceImages && resolvedReferenceUrls.length === 0) {
+  if (characterReferences?.length) {
+    const resolved = resolveCharacterReferences(characterReferences)
+    finalReferenceUrls = resolved.urls
+    finalReferenceLabels = resolved.labels
+  }
+
+  if (provider.supportsReferenceImages && finalReferenceUrls.length === 0) {
     return NextResponse.json({ error: "referenceImageUrls required for selected image provider" }, { status: 400 })
   }
-  if (provider.maxReferenceImages !== null && resolvedReferenceUrls.length > provider.maxReferenceImages) {
+  if (provider.maxReferenceImages !== null && finalReferenceUrls.length > provider.maxReferenceImages) {
     return NextResponse.json(
       { error: `${provider.label} supports at most ${provider.maxReferenceImages} reference images.` },
       { status: 400 }
@@ -77,9 +88,10 @@ export async function POST(request: NextRequest) {
   let result: ImageResult
   try {
     result = await provider.generateImage(prompt, {
-      referenceImageUrl: referenceImageUrl ?? undefined,
-      referenceImageUrls: referenceImageUrls ?? undefined,
-      referenceImageLabels: referenceImageLabels ?? undefined,
+      referenceImageUrl: finalReferenceUrls[0] ?? undefined,
+      referenceImageUrls: finalReferenceUrls.length > 0 ? finalReferenceUrls : undefined,
+      referenceImageLabels: finalReferenceLabels ?? undefined,
+      characterReferences: characterReferences ?? undefined,
     })
   } catch (error) {
     const durationMs = Date.now() - startMs

@@ -4,6 +4,7 @@ import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
 import { buildKlingReferencePrompt } from "@/lib/ai/providers/image/fal"
 import { getImageProviderMetadata } from "@/lib/ai/providers/image/options"
+import type { CharacterReference } from "@/lib/ai/providers/image/options"
 import type { StoryVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 
 function buildAppearanceDescription(appearance: {
@@ -41,6 +42,8 @@ export async function POST(request: NextRequest) {
   const profileIds = body?.profileIds as string[] | undefined
   const referenceAvailable = body?.referenceAvailable as boolean | undefined
   const imageProvider = getImageProviderMetadata(body?.imageProvider as string | undefined)
+  const characterReferences = body?.characterReferences as CharacterReference[] | undefined
+  const storyCharacterRefs = body?.storyCharacterRefs as CharacterReference[] | undefined
   const referenceImageLabels = body?.referenceImageLabels as string[] | undefined
 
   if (!visualContext?.pageScenes?.length) return NextResponse.json({ error: "visualContext required" }, { status: 400 })
@@ -99,7 +102,10 @@ export async function POST(request: NextRequest) {
       referenceAvailable: referenceAvailable ?? false,
       characterDetails,
       storyCharacters: visualContext.storyCharacters,
+      characterReferences,
+      storyCharacterRefs,
     })
+    // buildKlingReferencePrompt is a no-op when @Image tokens are already embedded
     return imageProvider.id === "fal-kling-o1"
       ? buildKlingReferencePrompt(prompt, referenceImageLabels ?? [])
       : prompt
