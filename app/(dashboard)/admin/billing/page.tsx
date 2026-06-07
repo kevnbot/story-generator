@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation"
-import Link from "next/link"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 import { AdminBillingTable } from "@/components/admin/billing/AdminBillingTable"
@@ -96,15 +95,7 @@ export default async function AdminBillingPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6">
-        <div className="flex items-center gap-4">
-          <h1 className="font-serif text-2xl font-semibold text-foreground">Billing</h1>
-          <Link href="/admin" className="text-sm text-muted-foreground hover:text-foreground">
-            Prompt Log
-          </Link>
-          <Link href="/admin/workbench" className="text-sm text-muted-foreground hover:text-foreground">
-            Prompt Workbench
-          </Link>
-        </div>
+        <h1 className="font-serif text-2xl font-semibold text-foreground">Billing</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Account subscription state, latest invoice tax, payment health, and wish grants.
         </p>
