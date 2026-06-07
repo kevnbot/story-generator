@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { Pagination } from "@/components/admin/Pagination"
 
 const PAGE_SIZE = 25
@@ -118,7 +119,12 @@ export function AdminAccountsTable({ rows }: { rows: AdminAccountRow[] }) {
               {visible.map((row) => (
                 <tr key={row.accountId} className="align-top">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{row.accountName}</p>
+                    <Link
+                      href={`/admin/accounts/${row.accountId}`}
+                      className="font-medium text-genie-purple-600 hover:underline"
+                    >
+                      {row.accountName}
+                    </Link>
                     <p className="text-xs capitalize text-muted-foreground">{row.plan} plan</p>
                     <p className="mt-1 font-mono text-[11px] text-muted-foreground">{row.accountId}</p>
                   </td>
