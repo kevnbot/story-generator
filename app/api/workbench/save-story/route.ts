@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { copyRemoteImageToStoragePath, buildStoryImagePath } from "@/lib/storage/images"
 import { config } from "@/lib/config"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import type { StoryImage } from "@/types"
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/save-story", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -141,4 +142,4 @@ export async function POST(request: NextRequest) {
   ])
 
   return NextResponse.json({ storyId: story?.id ?? null, creditsUsed: creditsNeeded })
-}
+})

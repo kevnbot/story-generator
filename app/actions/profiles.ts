@@ -1,12 +1,11 @@
 "use server"
 
-import * as Sentry from "@sentry/nextjs"
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
 import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
 import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap } from "@/lib/storage/images"
+import { logError } from "@/lib/logger"
 import type { KidAppearance, KidToy, KidProfile } from "@/types"
 
 function parseProfileFormData(formData: FormData): {
@@ -56,31 +55,101 @@ function parseProfileFormData(formData: FormData): {
 }
 
 export async function createProfile(prevState: string | null, formData: FormData): Promise<string | null> {
-  return await Sentry.withServerActionInstrumentation(
-    "createProfile",
-    { headers: await headers() },
-    async () => {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return "Not authenticated"
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return "Not authenticated"
 
-      const parsed = parseProfileFormData(formData)
-      if (parsed.error) return parsed.error
-      const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+    const parsed = parseProfileFormData(formData)
+    if (parsed.error) return parsed.error
+    const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
 
-      const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
+    const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
 
-      const service = createServiceClient()
-      const { data: userRow } = await service
-        .from("users")
-        .select("account_id")
-        .eq("id", user.id)
-        .single()
+    const service = createServiceClient()
+    const { data: userRow } = await service
+      .from("users")
+      .select("account_id")
+      .eq("id", user.id)
+      .single()
 
-      if (!userRow) return "User account not found"
+    if (!userRow) return "User account not found"
 
-      const { data: inserted, error } = await service.from("kid_profiles").insert({
-        account_id: userRow.account_id,
+    const { data: inserted, error } = await service.from("kid_profiles").insert({
+      account_id: userRow.account_id,
+      name,
+      age,
+      age_months,
+      gender,
+      appearance,
+      personality_tags: personalityTags,
+      toy,
+      prompt_summary: promptSummary,
+    }).select("*").single()
+
+    if (error) return error.message
+
+    if (inserted) {
+      const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
+      if (referenceUrl) {
+        const storedPath = await copyRemoteImageToStoragePath({
+          supabase: service,
+          sourceUrl: referenceUrl,
+          buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, inserted.id, extension),
+        })
+
+        if (storedPath) {
+          await service
+            .from("kid_profiles")
+            .update({
+              reference_image_path: storedPath,
+              reference_image_url: null,
+            })
+            .eq("id", inserted.id)
+        } else {
+          await service
+            .from("kid_profiles")
+            .update({ reference_image_url: referenceUrl })
+            .eq("id", inserted.id)
+        }
+      }
+    }
+
+    revalidatePath("/profiles")
+    revalidatePath("/generate")
+    return null
+  } catch (error) {
+    logError("createProfile failed", error, { action: "createProfile" })
+    throw error
+  }
+}
+
+export async function updateProfile(profileId: string, prevState: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return "Not authenticated"
+
+    if (!profileId) return "Profile id is required"
+
+    const parsed = parseProfileFormData(formData)
+    if (parsed.error) return parsed.error
+    const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+
+    const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
+
+    const service = createServiceClient()
+    const { data: userRow } = await service
+      .from("users")
+      .select("account_id")
+      .eq("id", user.id)
+      .single()
+
+    if (!userRow) return "User account not found"
+
+    const { data: updated, error } = await service
+      .from("kid_profiles")
+      .update({
         name,
         age,
         age_months,
@@ -89,181 +158,108 @@ export async function createProfile(prevState: string | null, formData: FormData
         personality_tags: personalityTags,
         toy,
         prompt_summary: promptSummary,
-      }).select("*").single()
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profileId)
+      .eq("account_id", userRow.account_id)
+      .is("deleted_at", null)
+      .select("id, character_illustration_path, character_illustration_url")
+      .single()
 
-      if (error) return error.message
+    if (error) return error.message
 
-      if (inserted) {
-        const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
-        if (referenceUrl) {
-          const storedPath = await copyRemoteImageToStoragePath({
-            supabase: service,
-            sourceUrl: referenceUrl,
-            buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, inserted.id, extension),
-          })
+    if (updated) {
+      const p = updated as { id: string; character_illustration_path?: string | null; character_illustration_url?: string | null }
+      const hasCharIllustration = !!(p.character_illustration_path || p.character_illustration_url)
 
-          if (storedPath) {
-            await service
-              .from("kid_profiles")
-              .update({
-                reference_image_path: storedPath,
-                reference_image_url: null,
-              })
-              .eq("id", inserted.id)
-          } else {
-            await service
-              .from("kid_profiles")
-              .update({ reference_image_url: referenceUrl })
-              .eq("id", inserted.id)
+      if (hasCharIllustration) {
+        await service.from("kid_profiles").update({ illustration_status: "generating" }).eq("id", profileId)
+
+        ;(async () => {
+          const { data: freshRow } = await service
+            .from("kid_profiles")
+            .select(
+              "id, name, age, age_months, gender, appearance, personality_tags, toy, " +
+              "character_illustration_path, character_illustration_url, " +
+              "toy_reference_image_path, toy_reference_image_url, " +
+              "reference_image_path, reference_image_url, combined_reference_path"
+            )
+            .eq("id", profileId)
+            .single()
+
+          if (!freshRow) {
+            await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
+            return
           }
-        }
+
+          const fresh = freshRow as unknown as KidProfile & {
+            character_illustration_path?: string | null
+            character_illustration_url?: string | null
+          }
+
+          const charPath = fresh.character_illustration_path
+          const charUrl = fresh.character_illustration_url
+            ?? (charPath ? (await createSignedImageUrlsMap(service, [charPath])).get(charPath) ?? null : null)
+
+          if (!charUrl) {
+            await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
+            return
+          }
+
+          // Build toy description string from fresh profile toy fields
+          const freshToy = fresh.toy as KidToy | null
+          let toyDescription: string | null = null
+          if (freshToy?.name) {
+            toyDescription = freshToy.name
+            const extra: string[] = []
+            if (freshToy.color) extra.push(freshToy.color)
+            if (freshToy.type) extra.push(freshToy.type)
+            if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
+            if (freshToy.description) toyDescription += ` — ${freshToy.description}`
+          }
+
+          await generateAndSaveCombinedReference(profileId, charUrl, toyDescription)
+        })().catch(() => null)
       }
-
-      revalidatePath("/profiles")
-      revalidatePath("/generate")
-      return null
     }
-  )
-}
 
-export async function updateProfile(profileId: string, prevState: string | null, formData: FormData): Promise<string | null> {
-  return await Sentry.withServerActionInstrumentation(
-    "updateProfile",
-    { headers: await headers() },
-    async () => {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return "Not authenticated"
-
-      if (!profileId) return "Profile id is required"
-
-      const parsed = parseProfileFormData(formData)
-      if (parsed.error) return parsed.error
-      const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
-
-      const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
-
-      const service = createServiceClient()
-      const { data: userRow } = await service
-        .from("users")
-        .select("account_id")
-        .eq("id", user.id)
-        .single()
-
-      if (!userRow) return "User account not found"
-
-      const { data: updated, error } = await service
-        .from("kid_profiles")
-        .update({
-          name,
-          age,
-          age_months,
-          gender,
-          appearance,
-          personality_tags: personalityTags,
-          toy,
-          prompt_summary: promptSummary,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", profileId)
-        .eq("account_id", userRow.account_id)
-        .is("deleted_at", null)
-        .select("id, character_illustration_path, character_illustration_url")
-        .single()
-
-      if (error) return error.message
-
-      if (updated) {
-        const p = updated as { id: string; character_illustration_path?: string | null; character_illustration_url?: string | null }
-        const hasCharIllustration = !!(p.character_illustration_path || p.character_illustration_url)
-
-        if (hasCharIllustration) {
-          await service.from("kid_profiles").update({ illustration_status: "generating" }).eq("id", profileId)
-
-          ;(async () => {
-            const { data: freshRow } = await service
-              .from("kid_profiles")
-              .select(
-                "id, name, age, age_months, gender, appearance, personality_tags, toy, " +
-                "character_illustration_path, character_illustration_url, " +
-                "toy_reference_image_path, toy_reference_image_url, " +
-                "reference_image_path, reference_image_url, combined_reference_path"
-              )
-              .eq("id", profileId)
-              .single()
-
-            if (!freshRow) {
-              await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
-              return
-            }
-
-            const fresh = freshRow as unknown as KidProfile & {
-              character_illustration_path?: string | null
-              character_illustration_url?: string | null
-            }
-
-            const charPath = fresh.character_illustration_path
-            const charUrl = fresh.character_illustration_url
-              ?? (charPath ? (await createSignedImageUrlsMap(service, [charPath])).get(charPath) ?? null : null)
-
-            if (!charUrl) {
-              await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
-              return
-            }
-
-            // Build toy description string from fresh profile toy fields
-            const freshToy = fresh.toy as KidToy | null
-            let toyDescription: string | null = null
-            if (freshToy?.name) {
-              toyDescription = freshToy.name
-              const extra: string[] = []
-              if (freshToy.color) extra.push(freshToy.color)
-              if (freshToy.type) extra.push(freshToy.type)
-              if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
-              if (freshToy.description) toyDescription += ` — ${freshToy.description}`
-            }
-
-            await generateAndSaveCombinedReference(profileId, charUrl, toyDescription)
-          })().catch(() => null)
-        }
-      }
-
-      revalidatePath("/profiles")
-      revalidatePath("/generate")
-      return null
-    }
-  )
+    revalidatePath("/profiles")
+    revalidatePath("/generate")
+    return null
+  } catch (error) {
+    logError("updateProfile failed", error, { action: "updateProfile" })
+    throw error
+  }
 }
 
 export async function deleteProfile(profileId: string): Promise<{ error?: string }> {
-  return await Sentry.withServerActionInstrumentation(
-    "deleteProfile",
-    { headers: await headers() },
-    async () => {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return { error: "Not authenticated" }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: "Not authenticated" }
 
-      const service = createServiceClient()
-      const { data: userRow } = await service
-        .from("users")
-        .select("account_id")
-        .eq("id", user.id)
-        .single()
+    const service = createServiceClient()
+    const { data: userRow } = await service
+      .from("users")
+      .select("account_id")
+      .eq("id", user.id)
+      .single()
 
-      if (!userRow) return { error: "User not found" }
+    if (!userRow) return { error: "User not found" }
 
-      const { error } = await service
-        .from("kid_profiles")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", profileId)
-        .eq("account_id", userRow.account_id)
+    const { error } = await service
+      .from("kid_profiles")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", profileId)
+      .eq("account_id", userRow.account_id)
 
-      if (error) return { error: error.message }
+    if (error) return { error: error.message }
 
-      revalidatePath("/profiles")
-      revalidatePath("/generate")
-      return {}
-    }
-  )
+    revalidatePath("/profiles")
+    revalidatePath("/generate")
+    return {}
+  } catch (error) {
+    logError("deleteProfile failed", error, { action: "deleteProfile" })
+    throw error
+  }
 }

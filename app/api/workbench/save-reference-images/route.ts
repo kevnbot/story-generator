@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { copyRemoteImageToStoragePath, createSignedImageUrlsMap, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/save-reference-images", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -143,4 +144,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ updated })
-}
+})

@@ -1,5 +1,11 @@
-import * as Sentry from "@sentry/nextjs"
 import { createClient } from "@supabase/supabase-js"
+
+function logError(message, error, context) {
+  const serialized = error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { value: String(error) }
+  console.error(JSON.stringify({ level: "error", message, time: new Date().toISOString(), ...context, error: serialized }))
+}
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -60,20 +66,13 @@ async function cleanupProfiles() {
 
       cleaned += 1
     } catch (error) {
-      Sentry.logger.error("profile image cleanup failed", {
+      logError("profile image cleanup failed", error, {
+        area: "image_cleanup",
+        target: "profile",
         account_id: profile.account_id,
         profile_id: profile.id,
         bucket: BUCKET,
         path: profile.reference_image_path,
-      })
-      Sentry.captureException(error, {
-        tags: { area: "image_cleanup", target: "profile" },
-        extra: {
-          account_id: profile.account_id,
-          profile_id: profile.id,
-          bucket: BUCKET,
-          path: profile.reference_image_path,
-        },
       })
     }
   }
@@ -128,18 +127,12 @@ async function cleanupStories() {
         removedImages += paths.length
       }
     } catch (error) {
-      Sentry.logger.error("story image cleanup failed", {
+      logError("story image cleanup failed", error, {
+        area: "image_cleanup",
+        target: "story",
         account_id: story.account_id,
         story_id: story.id,
         bucket: BUCKET,
-      })
-      Sentry.captureException(error, {
-        tags: { area: "image_cleanup", target: "story" },
-        extra: {
-          account_id: story.account_id,
-          story_id: story.id,
-          bucket: BUCKET,
-        },
       })
     }
   }

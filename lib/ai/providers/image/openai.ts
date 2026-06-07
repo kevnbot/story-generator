@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs"
+import { logger } from "@/lib/logger"
 import { dataUriFromBase64 } from "@/lib/image-data"
 import { IMAGE_PROVIDER_METADATA } from "./options"
 import type { ImageProvider, ImageGenerationOptions, ImageResult } from "./types"
@@ -99,7 +99,7 @@ async function singleAttempt(
     }
   } catch (err) {
     const error = String(err).slice(0, 500)
-    Sentry.logger.error("OpenAI image generation network error", {
+    logger.error("OpenAI image generation network error", {
       provider: "openai",
       model: METADATA.modelId,
       error,
@@ -109,7 +109,7 @@ async function singleAttempt(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => `HTTP ${response.status}`)
-    Sentry.logger.error("OpenAI image generation failed", {
+    logger.error("OpenAI image generation failed", {
       provider: "openai",
       model: METADATA.modelId,
       status_code: response.status,
@@ -138,7 +138,7 @@ export const openaiProvider: ImageProvider = {
   async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageResult> {
     const referenceImageCount = resolveReferenceImageUrls(options).length
     if (!process.env.OPENAI_API_KEY) {
-      Sentry.logger.error("OpenAI API key missing; skipping image generation", { provider: "openai" })
+      logger.error("OpenAI API key missing; skipping image generation", { provider: "openai" })
       return { url: null, error: "OPENAI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
     }
 
@@ -153,7 +153,7 @@ export const openaiProvider: ImageProvider = {
 
       if (attempt < 3) {
         const delay = RETRY_DELAYS_MS[attempt - 1]
-        Sentry.logger.warn("OpenAI image result retry scheduled", {
+        logger.warn("OpenAI image result retry scheduled", {
           provider: "openai",
           attempt,
           reason: url === null ? "null_url" : "black_image",

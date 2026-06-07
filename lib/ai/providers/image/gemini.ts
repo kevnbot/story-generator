@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs"
+import { logger } from "@/lib/logger"
 import { dataUriFromBase64 } from "@/lib/image-data"
 import { IMAGE_PROVIDER_METADATA } from "./options"
 import type { ImageProvider, ImageGenerationOptions, ImageResult } from "./types"
@@ -98,7 +98,7 @@ async function singleAttempt(
     )
   } catch (err) {
     const error = String(err).slice(0, 500)
-    Sentry.logger.error("Gemini image generation network error", {
+    logger.error("Gemini image generation network error", {
       provider: "gemini",
       model: METADATA.modelId,
       error,
@@ -108,7 +108,7 @@ async function singleAttempt(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => `HTTP ${response.status}`)
-    Sentry.logger.error("Gemini image generation failed", {
+    logger.error("Gemini image generation failed", {
       provider: "gemini",
       model: METADATA.modelId,
       status_code: response.status,
@@ -137,7 +137,7 @@ export const geminiProvider: ImageProvider = {
   async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageResult> {
     const referenceImageCount = resolveReferenceImageUrls(options).length
     if (!process.env.GEMINI_API_KEY) {
-      Sentry.logger.error("Gemini API key missing; skipping image generation", { provider: "gemini" })
+      logger.error("Gemini API key missing; skipping image generation", { provider: "gemini" })
       return { url: null, error: "GEMINI_API_KEY not configured", isBlackImage: false, attempts: 0, modelId: METADATA.modelId, referenceImageCount, statusCode: null }
     }
 
@@ -152,7 +152,7 @@ export const geminiProvider: ImageProvider = {
 
       if (attempt < 3) {
         const delay = RETRY_DELAYS_MS[attempt - 1]
-        Sentry.logger.warn("Gemini image result retry scheduled", {
+        logger.warn("Gemini image result retry scheduled", {
           provider: "gemini",
           attempt,
           reason: url === null ? "null_url" : "black_image",

@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs"
+import { logger } from "@/lib/logger"
 import { buildReferenceImagePrompt } from "@/lib/ai/prompt-builder"
 import { NEGATIVE_PROMPT, buildReferenceStylePrompt } from "@/lib/ai/image-prompt"
 import type { KidProfile } from "@/types"
@@ -42,7 +42,7 @@ async function falPostWithRetry(
     const errorText = await response.text().catch(() => `HTTP ${response.status}`)
     const isRetryable = response.status === 429 || response.status >= 500
     if (!isRetryable) {
-      Sentry.logger.warn("fal.ai image generation non-retryable error", {
+      logger.warn("fal.ai image generation non-retryable error", {
         provider: "fal.ai",
         model,
         status_code: response.status,
@@ -54,7 +54,7 @@ async function falPostWithRetry(
       return { ok: false, data: null, errorText }
     }
     const delayMs = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 1000
-    Sentry.logger.warn("fal.ai image generation attempt failed; retrying", {
+    logger.warn("fal.ai image generation attempt failed; retrying", {
       provider: "fal.ai",
       model,
       attempt,
@@ -81,7 +81,7 @@ export const falProvider: ImageProvider = {
 
   async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<string | null> {
     if (!process.env.FAL_KEY) {
-      Sentry.logger.warn("fal.ai key missing; skipping image generation", { provider: "fal.ai" })
+      logger.warn("fal.ai key missing; skipping image generation", { provider: "fal.ai" })
       return null
     }
 
@@ -107,7 +107,7 @@ export const falProvider: ImageProvider = {
         const url = extractUrl(data)
         if (url) return url
       } else {
-        Sentry.logger.warn("fal.ai Kontext image generation failed; falling back to standard generation", {
+        logger.warn("fal.ai Kontext image generation failed; falling back to standard generation", {
           provider: "fal.ai",
           model: "fal-ai/flux-pro/kontext",
           error: errorText.slice(0, 500),
@@ -127,7 +127,7 @@ export const falProvider: ImageProvider = {
     })
 
     if (!ok) {
-      Sentry.logger.error("fal.ai standard image generation failed", {
+      logger.error("fal.ai standard image generation failed", {
         provider: "fal.ai",
         model: "fal-ai/flux/dev",
         error: errorText.slice(0, 500),
@@ -161,7 +161,7 @@ export async function generateProfileReferenceImage(profile: KidProfile): Promis
   })
 
   if (!response.ok) {
-    Sentry.logger.error("fal.ai reference image generation failed", {
+    logger.error("fal.ai reference image generation failed", {
       provider: "fal.ai",
       model: "fal-ai/flux/dev",
       status_code: response.status,
@@ -217,7 +217,7 @@ export async function generateGroupReferenceImage(
       const url = data.images?.[0]?.url
       if (url) currentImageUrl = url
     } else {
-      Sentry.logger.error("fal.ai group reference image update failed", {
+      logger.error("fal.ai group reference image update failed", {
         provider: "fal.ai",
         model: "fal-ai/flux-pro/kontext",
         status_code: response.status,
@@ -251,7 +251,7 @@ export async function applyArtStyleToReference(
     if (url) return url
   }
 
-  Sentry.logger.warn("fal.ai reference art style transfer failed; using original reference", {
+  logger.warn("fal.ai reference art style transfer failed; using original reference", {
     provider: "fal.ai",
     model: "fal-ai/flux-pro/kontext",
     status_code: response.status,

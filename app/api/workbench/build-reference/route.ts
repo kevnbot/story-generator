@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
+import { logger } from "@/lib/logger"
 import { createSignedImageUrlsMap } from "@/lib/storage/images"
 import { getProfileReferencePaths, resolveProfileReferences } from "@/lib/ai/profile-references"
 import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
@@ -21,7 +22,7 @@ type WorkbenchReferenceProfile = {
   toy?: { name?: string; description?: string } | null
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/build-reference", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!characterUrl) {
-      Sentry.logger.warn("build-reference: character illustration not found for profile", {
+      logger.warn("build-reference: character illustration not found for profile", {
         profile_id: profile.id,
         profile_name: profile.name,
       })
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (!toyUrl) {
-        Sentry.logger.warn("build-reference: toy illustration not found for profile", {
+        logger.warn("build-reference: toy illustration not found for profile", {
           profile_id: profile.id,
           profile_name: profile.name,
           toy_name: toyName,
@@ -129,4 +130,4 @@ export async function POST(request: NextRequest) {
     styleTransfer: null,
     styledReferenceUrl: referenceImageUrls[0] ?? null,
   })
-}
+})

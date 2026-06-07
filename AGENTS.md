@@ -29,7 +29,7 @@ Primary user flows:
 - Anthropic SDK for story generation.
 - fal.ai HTTP API calls from server-side code.
 - Upstash Redis rate limits.
-- Sentry for error monitoring and structured logs.
+- Vercel runtime logs for error monitoring and structured logs (via `lib/logger.ts`).
 - Server-side comms through Resend and Twilio.
 
 ## Commands
@@ -69,11 +69,8 @@ Optional or feature-specific:
 - `TWILIO_*` variables enable SMS and 2FA helpers.
 - `STRIPE_*` variables are listed but checkout/webhook implementation may not be complete.
 - `ADMIN_USER_IDS` is a comma-separated allowlist for `/admin`.
-- `NEXT_PUBLIC_SENTRY_DSN` enables Sentry client, server, and edge event capture.
-- `NEXT_PUBLIC_SENTRY_ENVIRONMENT` and `SENTRY_ENVIRONMENT` set Sentry environment names.
-- `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` enable source map upload in builds/CI.
 
-Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, Stripe secrets, Redis tokens, or `SENTRY_AUTH_TOKEN` to Client Components.
+Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, Stripe secrets, or Redis tokens to Client Components.
 
 ## Repository Map
 
@@ -84,7 +81,9 @@ Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, St
 - `app/actions/`: Server Functions for auth, profile, and story mutations.
 - `app/api/generate-story/route.ts`: authenticated streaming story generation endpoint.
 - `app/api/auth/callback/route.ts`: Supabase auth callback.
-- `instrumentation.ts`, `instrumentation-client.ts`, and `sentry.*.config.ts`: Sentry SDK setup for Next.js request, client, server, and edge capture.
+- `lib/logger.ts`: structured JSON logger (`logger.*`, `logError`) written to stdout/stderr for Vercel runtime logs.
+- `lib/api/with-logging.ts`: `withRouteLogging` wrapper that gives Route Handlers try/catch + structured error logging.
+- `instrumentation.ts`: exports `onRequestError` to log Server Component, Proxy, and request errors via `lib/logger.ts`.
 - `proxy.ts`: Next 16 Proxy for auth redirects and admin guarding.
 - `components/generate/`: client story generation UI.
 - `components/profiles/`: profile list and form UI.
@@ -130,18 +129,15 @@ Never expose service role keys, Anthropic keys, fal keys, Twilio credentials, St
 - Validate external inputs from `FormData`, JSON bodies, query params, and route params before database writes.
 - Never log full prompts together with secrets, auth tokens, service keys, phone numbers, or payment data.
 
-## Sentry Logging
+## Logging
 
-- Sentry is initialized through `instrumentation-client.ts`, `instrumentation.ts`, `sentry.server.config.ts`, and `sentry.edge.config.ts`; keep those files aligned when changing SDK options.
-- `instrumentation.ts` must export `onRequestError = Sentry.captureRequestError` for Server Component, Proxy, and request error capture.
-- `instrumentation-client.ts` must export `onRouterTransitionStart = Sentry.captureRouterTransitionStart`.
-- All runtimes use `sendDefaultPii: true` and `enableLogs: true`; do not add Session Replay or tracing sample rates unless explicitly requested.
-- Prefer `Sentry.logger.warn/error` for operational failures that should be searchable in Sentry logs.
+- Logging goes through `lib/logger.ts`, which writes structured JSON lines to stdout/stderr. Vercel's runtime logs capture and index these automatically — there is no external logging SDK.
+- Use `logger.info/warn/error(message, context?)` for operational events and `logError(message, error, context?)` for caught exceptions (it serializes the error name/message/stack into the log entry).
+- Wrap authenticated Route Handlers with `withRouteLogging("route/name", handler)` from `lib/api/with-logging.ts`. It catches uncaught exceptions, logs them as structured JSON, and returns a generic 500. The auth check stays as the first lines inside the wrapped handler.
+- Server Functions in `app/actions/*` wrap their body in try/catch, call `logError("<action> failed", error, { action })`, and rethrow so the framework still surfaces the error.
+- `instrumentation.ts` exports `onRequestError` to log Server Component, Proxy, and request errors via `logError`.
 - Use structured attributes with snake_case keys, such as `user_id`, `account_id`, `job_id`, `provider`, `model`, `status_code`, `profile_count`, `story_length`, and `image_count`.
-- For unexpected exceptions, call `Sentry.captureException(error, { tags, extra })` with safe context only.
-- Do not log full prompts, generated story content, child appearance/toy details beyond IDs or counts, raw provider response bodies, service role keys, provider API keys, auth tokens, phone numbers, email bodies, payment data, or Sentry auth tokens.
-- Server Functions that need Sentry action context should use `Sentry.withServerActionInstrumentation()` with `headers: await headers()`. Do not pass raw `FormData` or `recordResponse: true` for profile/story actions because payloads can contain child details or generated content.
-- Sentry source map upload is configured in `next.config.ts` through `withSentryConfig`; it should depend on `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` being present in CI.
+- Do not log full prompts, generated story content, child appearance/toy details beyond IDs or counts, raw provider response bodies, service role keys, provider API keys, auth tokens, phone numbers, email bodies, or payment data.
 
 ## Data Model Notes
 
@@ -236,11 +232,10 @@ Testing conventions:
 
 If a check cannot run because credentials are missing, state that clearly in the final response and explain what was verified instead.
 
-For Sentry changes specifically:
-- Run `npm run build` to validate instrumentation and `withSentryConfig`.
+For logging changes specifically:
+- Run `npm run build` to validate `instrumentation.ts` and Route Handler wrappers type-check.
 - Run `npm run lint` or explain any unrelated pre-existing failures.
-- If Sentry credentials are available, trigger one safe test exception and one safe structured logger call, then confirm they appear in Sentry Issues/Logs.
-- If Sentry credentials are not available, verify the app still boots without `NEXT_PUBLIC_SENTRY_DSN`.
+- Trigger one safe handled failure and confirm a structured JSON line (`{"level":"error",...}`) appears in the server/Vercel runtime logs.
 
 ## Common Pitfalls
 
@@ -251,8 +246,7 @@ For Sentry changes specifically:
 - Do not bypass account scoping when using the service role client.
 - Do not use `next lint`; Next 16 removed it. Use `npm run lint` or `npx eslint .`.
 - Do not run or rely on `npm run db:migrate` until `db/migrate.js` exists.
-- Do not remove or rename Sentry instrumentation files without updating Next/Sentry setup together.
-- Do not add Sentry tunneling unless you also update the `proxy.ts` matcher and account for the extra server load.
+- Do not reintroduce an external logging SDK; log through `lib/logger.ts` so Vercel runtime logs capture structured output.
 - Do not make Playwright depend on real Supabase or AI/image provider credentials unless explicitly asked.
 - Do not remove the `NEXT_PUBLIC_E2E_TEST` guard from `app/test-harness/*` routes.
 - Do not change prompt structure casually; story and image prompts contain guardrails for age-appropriateness, character consistency, and toy/child separation.

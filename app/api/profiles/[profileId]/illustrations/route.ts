@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { createSignedImageUrlsMap } from "@/lib/storage/images"
 import type { ProfileReferenceImageHistory } from "@/types"
 
@@ -8,10 +9,10 @@ type HistoryRow = Pick<ProfileReferenceImageHistory,
   "profile_snapshot" | "is_active" | "activation_count" | "last_activated_at"
 >
 
-export async function GET(
+export const GET = withRouteLogging("profiles/[profileId]/illustrations", async (
   _request: NextRequest,
   context: { params: Promise<{ profileId: string }> }
-) {
+) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -88,4 +89,4 @@ export async function GET(
       toy: (toyHistoryResult.data ?? []) as HistoryRow[],
     },
   })
-}
+})

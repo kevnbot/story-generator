@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { getImageProvider } from "@/lib/ai/providers/image/registry"
 import { resolveCharacterReferences } from "@/lib/ai/providers/image/fal"
 import type { ImageResult } from "@/lib/ai/providers/image/types"
@@ -42,7 +43,7 @@ function sanitizeProviderError(error: string | null): string | null {
     .slice(0, 1000)
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/generate-image", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -135,4 +136,4 @@ export async function POST(request: NextRequest) {
     error: sanitizeProviderError(result.error),
     durationMs,
   })
-}
+})

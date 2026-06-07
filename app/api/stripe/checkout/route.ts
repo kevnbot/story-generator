@@ -1,5 +1,5 @@
-import * as Sentry from "@sentry/nextjs"
 import { NextResponse } from "next/server"
+import { logError } from "@/lib/logger"
 import {
   getBillingPlanOption,
   isBillingInterval,
@@ -109,20 +109,13 @@ export async function POST(request: Request) {
 
     return NextResponse.redirect(session.url, { status: 303 })
   } catch (error) {
-    Sentry.logger.error("Stripe checkout session creation failed", {
+    logError("Stripe checkout session creation failed", error, {
+      area: "billing",
+      operation: "checkout",
       user_id: user.id,
       account_id: userRow.account_id,
       billing_plan: option.plan.id,
       billing_interval: option.interval,
-    })
-    Sentry.captureException(error, {
-      tags: { area: "billing", operation: "checkout" },
-      extra: {
-        user_id: user.id,
-        account_id: userRow.account_id,
-        billing_plan: option.plan.id,
-        billing_interval: option.interval,
-      },
     })
     return billingRedirect(request, { error: "checkout_failed" })
   }

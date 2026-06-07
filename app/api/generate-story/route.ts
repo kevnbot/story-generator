@@ -1,6 +1,7 @@
-import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { withRouteLogging } from "@/lib/api/with-logging"
+import { logger, logError } from "@/lib/logger"
 import { generateStoryStream, extractStoryTitle, splitStoryPages } from "@/lib/ai/story"
 import { extractVisualContext } from "@/lib/ai/prompt-builder/visual-context"
 import { getImageProvider, isImageProviderKeyAvailable } from "@/lib/ai/providers/image/registry"
@@ -58,7 +59,7 @@ function buildAppearanceDescription(profile: KidProfile): string {
   return parts.join(", ")
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("generate-story", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -238,7 +239,7 @@ export async function POST(request: NextRequest) {
       const charUrl = charPath ? signedUrlsMap.get(charPath) : null
 
       if (!charUrl) {
-        Sentry.logger.warn("Character illustration URL could not be resolved", {
+        logger.warn("Character illustration URL could not be resolved", {
           profile_id: p.id,
           profile_name: p.name,
         })
@@ -401,7 +402,7 @@ Each page must describe one clear visual moment — where the characters are, wh
 
         if (imagesEnabled) {
           const pipelineStart = Date.now()
-          Sentry.logger.info("[TIMING] image pipeline start", {
+          logger.info("[TIMING] image pipeline start", {
             profile_count: profiles.length,
             image_count: lengthConfig.imageCount,
           })
@@ -422,7 +423,7 @@ Each page must describe one clear visual moment — where the characters are, wh
           const vcStart = Date.now()
           const { result: visualContext } = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
           const vcDuration = Date.now() - vcStart
-          Sentry.logger.info(`[TIMING] visual context extraction: ${vcDuration}ms`)
+          logger.info(`[TIMING] visual context extraction: ${vcDuration}ms`)
 
           const refStart = Date.now()
           if (imagesEnabled && selectedImageProvider.supportsReferenceImages && visualContext.storyCharacters.length > 0) {
@@ -472,7 +473,7 @@ Each page must describe one clear visual moment — where the characters are, wh
             referenceImageLabels = resolved.labels
           }
           const refDuration = Date.now() - refStart
-          Sentry.logger.info(`[TIMING] reference image building: ${refDuration}ms`)
+          logger.info(`[TIMING] reference image building: ${refDuration}ms`)
 
           const referencesAvailableForProvider = imageProvider.supportsReferenceImages && referenceImageUrls.length > 0
 
@@ -535,14 +536,14 @@ Each page must describe one clear visual moment — where the characters are, wh
             })
             const imgDuration = Date.now() - imgStart
             const imgResultType = result.url === null ? "null" : result.isBlackImage ? "black" : "ok"
-            Sentry.logger.info(`[TIMING] image generation page ${imgIdx}: ${imgDuration}ms (${imgResultType})`, {
+            logger.info(`[TIMING] image generation page ${imgIdx}: ${imgDuration}ms (${imgResultType})`, {
               scene_index: imgIdx,
               duration_ms: imgDuration,
               result: imgResultType,
             })
             generatedResults.push(result)
             if (result.url === null) {
-              Sentry.logger.warn("Image generation returned null", {
+              logger.warn("Image generation returned null", {
                 provider: imageProviderId,
                 scene_index: imgIdx,
                 user_id: user.id,
@@ -550,7 +551,7 @@ Each page must describe one clear visual moment — where the characters are, wh
                 attempts: result.attempts,
               })
             } else if (result.isBlackImage) {
-              Sentry.logger.warn("Image generation returned black image", {
+              logger.warn("Image generation returned black image", {
                 provider: imageProviderId,
                 scene_index: imgIdx,
                 user_id: user.id,
@@ -563,7 +564,7 @@ Each page must describe one clear visual moment — where the characters are, wh
           const storageResults = await Promise.all(
             generatedResults.map(async (result, sceneIndex) => {
               if (result.url === null || result.isBlackImage) {
-                Sentry.logger.warn("Image generation using error placeholder", {
+                logger.warn("Image generation using error placeholder", {
                   provider: imageProviderId,
                   scene_index: sceneIndex,
                   job_id: job.id,
@@ -579,7 +580,7 @@ Each page must describe one clear visual moment — where the characters are, wh
                 buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
               })
               const copyDuration = Date.now() - copyStart
-              Sentry.logger.info(`[TIMING] storage copy page ${sceneIndex}: ${copyDuration}ms`, {
+              logger.info(`[TIMING] storage copy page ${sceneIndex}: ${copyDuration}ms`, {
                 scene_index: sceneIndex,
                 duration_ms: copyDuration,
               })
@@ -594,7 +595,7 @@ Each page must describe one clear visual moment — where the characters are, wh
 
           images.push(...storageResults)
           const pipelineDuration = Date.now() - pipelineStart
-          Sentry.logger.info(`[TIMING] image pipeline total: ${pipelineDuration}ms`)
+          logger.info(`[TIMING] image pipeline total: ${pipelineDuration}ms`)
         }
 
         const { data: story } = await service
@@ -677,13 +678,9 @@ Each page must describe one clear visual moment — where the characters are, wh
           provider: "anthropic",
         }
 
-        Sentry.logger.error("Story generation stream failed", logAttributes)
-        Sentry.captureException(err, {
-          tags: {
-            area: "story_generation",
-            provider: "anthropic",
-          },
-          extra: logAttributes,
+        logError("Story generation stream failed", err, {
+          area: "story_generation",
+          ...logAttributes,
         })
         await service
           .from("generation_jobs")
@@ -701,4 +698,4 @@ Each page must describe one clear visual moment — where the characters are, wh
       "X-Content-Type-Options": "nosniff",
     },
   })
-}
+})

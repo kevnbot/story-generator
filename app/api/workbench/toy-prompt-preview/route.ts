@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
 import type { KidToy } from "@/types"
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/toy-prompt-preview", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -30,4 +31,4 @@ export async function POST(request: NextRequest) {
 
   const prompt = buildToyIllustrationPrompt(toy)
   return NextResponse.json({ prompt })
-}
+})

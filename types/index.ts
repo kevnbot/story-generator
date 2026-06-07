@@ -66,7 +66,13 @@ export interface KidProfile {
   reference_image_path: string | null
   reference_image_url: string | null
   combined_reference_path: string | null
+  combined_reference_url?: string | null
   character_illustration_path: string | null
+  character_illustration_url?: string | null
+  toy_reference_image_path?: string | null
+  toy_reference_image_url?: string | null
+  illustration_status?: string | null
+  illustration_error?: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string
