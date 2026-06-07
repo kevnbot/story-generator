@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { copyRemoteImageToStoragePath, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
 import type { ProfileReferenceImageHistory } from "@/types"
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("profiles/restore-reference", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -83,4 +84,4 @@ export async function POST(request: NextRequest) {
     path,
     profileSnapshot: row.profile_snapshot ?? null,
   })
-}
+})

@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs"
+import { logger } from "@/lib/logger"
 import { IMAGE_PROVIDER_METADATA, type ImageProviderId, type ImageProviderMetadata, type CharacterReference } from "./options"
 import type { ImageProvider, ImageGenerationOptions, ImageResult } from "./types"
 import {
@@ -41,7 +41,7 @@ async function falPostWithRetry(
     const errorText = await response.text().catch(() => `HTTP ${response.status}`)
     const isRetryable = response.status === 429 || response.status >= 500
     if (!isRetryable) {
-      Sentry.logger.warn("fal.ai image generation non-retryable error", {
+      logger.warn("fal.ai image generation non-retryable error", {
         provider: "fal",
         model,
         status_code: response.status,
@@ -51,7 +51,7 @@ async function falPostWithRetry(
     }
     if (attempt === maxAttempts) return { ok: false, data: null, errorText }
     const delayMs = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 1000
-    Sentry.logger.warn("fal.ai image generation HTTP retry", {
+    logger.warn("fal.ai image generation HTTP retry", {
       provider: "fal",
       model,
       attempt,
@@ -218,7 +218,7 @@ async function singleAttempt(
 
   const { ok, data, errorText } = await falPostWithRetry(request.model, request.body)
   if (!ok) {
-    Sentry.logger.error("fal.ai image generation failed", {
+    logger.error("fal.ai image generation failed", {
       provider: providerId,
       model: request.model,
       error: errorText.slice(0, 500),
@@ -247,7 +247,7 @@ function createFalProvider(providerId: FalProviderId): ImageProvider {
     async generateImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageResult> {
       const referenceImageCount = resolveReferenceImageUrls(options).length
       if (!process.env.FAL_KEY) {
-        Sentry.logger.warn("fal.ai key missing; skipping image generation", { provider: providerId })
+        logger.warn("fal.ai key missing; skipping image generation", { provider: providerId })
         return {
           url: null,
           error: "FAL_KEY not configured",
@@ -276,7 +276,7 @@ function createFalProvider(providerId: FalProviderId): ImageProvider {
 
         if (attempt < 3) {
           const delay = RETRY_DELAYS_MS[attempt - 1]
-          Sentry.logger.warn("fal.ai image result retry scheduled", {
+          logger.warn("fal.ai image result retry scheduled", {
             provider: providerId,
             attempt,
             reason: url === null ? "null_url" : "black_image",

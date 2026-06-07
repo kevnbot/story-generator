@@ -1,38 +1,36 @@
 "use server"
 
-import * as Sentry from "@sentry/nextjs"
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { logError } from "@/lib/logger"
 
 export async function deleteStory(storyId: string): Promise<{ error?: string }> {
-  return await Sentry.withServerActionInstrumentation(
-    "deleteStory",
-    { headers: await headers() },
-    async () => {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return { error: "Not authenticated" }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: "Not authenticated" }
 
-      const service = createServiceClient()
-      const { data: userRow } = await service
-        .from("users")
-        .select("account_id")
-        .eq("id", user.id)
-        .single()
+    const service = createServiceClient()
+    const { data: userRow } = await service
+      .from("users")
+      .select("account_id")
+      .eq("id", user.id)
+      .single()
 
-      if (!userRow) return { error: "User not found" }
+    if (!userRow) return { error: "User not found" }
 
-      const { error } = await service
-        .from("stories")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", storyId)
-        .eq("account_id", userRow.account_id)
+    const { error } = await service
+      .from("stories")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", storyId)
+      .eq("account_id", userRow.account_id)
 
-      if (error) return { error: error.message }
+    if (error) return { error: error.message }
 
-      revalidatePath("/stories")
-      return {}
-    }
-  )
+    revalidatePath("/stories")
+    return {}
+  } catch (error) {
+    logError("deleteStory failed", error, { action: "deleteStory" })
+    throw error
+  }
 }

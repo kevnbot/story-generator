@@ -1,5 +1,5 @@
-import * as Sentry from "@sentry/nextjs"
 import { NextResponse } from "next/server"
+import { logError } from "@/lib/logger"
 import { getBillingOwnerContext } from "@/lib/billing/owner"
 import { getStripe } from "@/lib/billing/stripe"
 
@@ -36,16 +36,11 @@ export async function POST(request: Request) {
 
     return NextResponse.redirect(session.url, { status: 303 })
   } catch (error) {
-    Sentry.logger.error("Stripe billing portal session creation failed", {
+    logError("Stripe billing portal session creation failed", error, {
+      area: "billing",
+      operation: "portal",
       user_id: user.id,
       account_id: userRow.account_id,
-    })
-    Sentry.captureException(error, {
-      tags: { area: "billing", operation: "portal" },
-      extra: {
-        user_id: user.id,
-        account_id: userRow.account_id,
-      },
     })
     return billingRedirect(request, { error: "portal_failed" })
   }

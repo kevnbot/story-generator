@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { buildStoryPagePrompt } from "@/lib/ai/image-prompt"
 import { buildKlingReferencePrompt } from "@/lib/ai/providers/image/fal"
 import { getImageProviderMetadata } from "@/lib/ai/providers/image/options"
@@ -30,7 +31,7 @@ function buildAppearanceDescription(appearance: {
   return parts.join(", ")
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/build-image-prompts", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -112,4 +113,4 @@ export async function POST(request: NextRequest) {
   })
 
   return NextResponse.json({ prompts })
-}
+})

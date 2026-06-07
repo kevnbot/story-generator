@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform-admin"
+import { withRouteLogging } from "@/lib/api/with-logging"
 import { formatAge } from "@/lib/ai/prompt-builder"
 import { STORY_LENGTHS, type StoryLength } from "@/lib/story-lengths"
 import { TEXT_DENSITIES, DEFAULT_TEXT_DENSITY, type TextDensityKey } from "@/lib/story-density"
@@ -15,7 +16,7 @@ type StoryTypeRow = {
   extra_input_label: string | null
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("workbench/build-prompts", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -153,4 +154,4 @@ Each page must describe one clear visual moment — where the characters are, wh
       pageCount: lengthConfig.pages,
     },
   })
-}
+})

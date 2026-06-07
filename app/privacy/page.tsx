@@ -101,7 +101,7 @@ export default function PrivacyPage() {
             "Resend \u2014 transactional email.",
             "Twilio \u2014 SMS notifications (only if you opt in).",
             "Upstash \u2014 rate limiting (receives IP address only).",
-            "Sentry \u2014 error tracking and monitoring.",
+            "Vercel \u2014 application runtime logging and error monitoring.",
           ]}
         />
         <LegalP>

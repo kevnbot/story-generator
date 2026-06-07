@@ -1,6 +1,7 @@
-import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { withRouteLogging } from "@/lib/api/with-logging"
+import { logError } from "@/lib/logger"
 import { generateProfileReferenceImage } from "@/lib/ai/image"
 import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
 import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
@@ -30,7 +31,7 @@ function extractFalUrl(data: Record<string, unknown>): string | null {
   return (data as { images?: { url: string }[] }).images?.[0]?.url ?? null
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("profiles/regenerate-reference", async (request: NextRequest) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -133,9 +134,9 @@ export async function POST(request: NextRequest) {
     .eq("id", accountId)
 
   if (creditError) {
-    Sentry.captureException(creditError, {
-      tags: { area: "profile_regen_credit_deduct" },
-      extra: { profile_id: profileId },
+    logError("profile regen: credit deduction failed", creditError, {
+      area: "profile_regen_credit_deduct",
+      profile_id: profileId,
     })
     return NextResponse.json({ error: "Failed to deduct credit" }, { status: 500 })
   }
@@ -222,9 +223,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: imageUrl, path })
   } catch (e) {
-    Sentry.captureException(e, {
-      tags: { area: "profile_regen_post_deduct" },
-      extra: { profile_id: profileId },
+    logError("profile regen: post-deduct failed", e, {
+      area: "profile_regen_post_deduct",
+      profile_id: profileId,
     })
     // Refund credit
     await service
@@ -233,4 +234,4 @@ export async function POST(request: NextRequest) {
       .eq("id", accountId)
     return NextResponse.json({ error: "Regeneration failed" }, { status: 500 })
   }
-}
+})

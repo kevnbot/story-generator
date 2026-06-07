@@ -1,7 +1,7 @@
-import * as Sentry from "@sentry/nextjs"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { KidProfile, StoryImage, StoryImageForUi } from "@/types"
 import { readImageUrl } from "@/lib/image-data"
+import { logger, logError } from "@/lib/logger"
 
 export const GENERATED_IMAGES_BUCKET = process.env.SUPABASE_IMAGES_BUCKET ?? "generated-images"
 
@@ -66,7 +66,7 @@ export async function copyRemoteImageToStorage({
       })
 
     if (error) {
-      Sentry.logger.error("supabase storage upload failed", {
+      logger.error("supabase storage upload failed", {
         bucket,
         path: destinationPath,
         status_code: Number.parseInt(error.statusCode ?? "0", 10) || 0,
@@ -76,12 +76,10 @@ export async function copyRemoteImageToStorage({
 
     return { path: destinationPath, contentType: remote.contentType }
   } catch (error) {
-    Sentry.captureException(error, {
-      tags: { area: "image_storage_copy" },
-      extra: {
-        bucket,
-        path: destinationPath,
-      },
+    logError("image storage copy failed", error, {
+      area: "image_storage_copy",
+      bucket,
+      path: destinationPath,
     })
     return null
   }
@@ -106,7 +104,7 @@ export async function copyRemoteImageToStoragePath(
       })
 
     if (error) {
-      Sentry.logger.error("supabase storage upload failed", {
+      logger.error("supabase storage upload failed", {
         bucket: input.bucket ?? GENERATED_IMAGES_BUCKET,
         path: destinationPath,
         status_code: Number.parseInt(error.statusCode ?? "0", 10) || 0,
@@ -116,11 +114,9 @@ export async function copyRemoteImageToStoragePath(
 
     return destinationPath
   } catch (error) {
-    Sentry.captureException(error, {
-      tags: { area: "image_storage_copy" },
-      extra: {
-        bucket: input.bucket ?? GENERATED_IMAGES_BUCKET,
-      },
+    logError("image storage copy failed", error, {
+      area: "image_storage_copy",
+      bucket: input.bucket ?? GENERATED_IMAGES_BUCKET,
     })
     return null
   }
@@ -134,7 +130,7 @@ export async function createSignedImageUrl(
 ): Promise<string | null> {
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn)
   if (error) {
-    Sentry.logger.error("supabase signed image url failed", {
+    logger.error("supabase signed image url failed", {
       bucket,
       path,
       status_code: Number.parseInt(error.statusCode ?? "0", 10) || 0,
@@ -155,7 +151,7 @@ export async function createSignedImageUrlsMap(
 
   const { data, error } = await supabase.storage.from(bucket).createSignedUrls(uniquePaths, expiresIn)
   if (error) {
-    Sentry.logger.error("supabase signed image urls batch failed", {
+    logger.error("supabase signed image urls batch failed", {
       bucket,
       path_count: uniquePaths.length,
       status_code: Number.parseInt(error.statusCode ?? "0", 10) || 0,
