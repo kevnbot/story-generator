@@ -167,6 +167,8 @@ export interface CreditTransaction {
   stripe_invoice_id: string | null
   stripe_subscription_id: string | null
   stripe_event_id: string | null
+  reference_type: string | null
+  reference_id: string | null
   created_at: string
 }
 
@@ -293,6 +295,20 @@ export interface PlatformAdmin {
   granted_by: string | null
   created_at: string
   revoked_at: string | null
+}
+
+export interface ProfileReferenceImageHistory {
+  id: string
+  profile_id: string
+  account_id: string
+  image_type: string
+  image_path: string | null
+  image_url: string
+  created_at: string
+  profile_snapshot: Record<string, unknown> | null
+  is_active: boolean
+  activation_count: number
+  last_activated_at: string | null
 }
 
 // ─── API response types ───────────────────────────────────────────────────────
