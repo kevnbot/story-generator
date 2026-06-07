@@ -400,6 +400,11 @@ Each page must describe one clear visual moment — where the characters are, wh
         let pagePrompts: string[] = []
 
         if (imagesEnabled) {
+          const pipelineStart = Date.now()
+          Sentry.logger.info("[TIMING] image pipeline start", {
+            profile_count: profiles.length,
+            image_count: lengthConfig.imageCount,
+          })
           const storyPages = splitStoryPages(fullText)
           const imageProvider = getImageProvider(imageProviderId)
 
@@ -414,8 +419,12 @@ Each page must describe one clear visual moment — where the characters are, wh
           const toyNames = profiles
             .map(p => p.toy?.name)
             .filter((name): name is string => Boolean(name) && name !== "their favorite toy")
+          const vcStart = Date.now()
           const { result: visualContext } = await extractVisualContext(storyPages, characterNames, toyNames, styleDescription)
+          const vcDuration = Date.now() - vcStart
+          Sentry.logger.info(`[TIMING] visual context extraction: ${vcDuration}ms`)
 
+          const refStart = Date.now()
           if (imagesEnabled && selectedImageProvider.supportsReferenceImages && visualContext.storyCharacters.length > 0) {
             const ranked = [...visualContext.storyCharacters]
               .sort((a, b) => b.appearsOnPages.length - a.appearsOnPages.length)
@@ -462,6 +471,8 @@ Each page must describe one clear visual moment — where the characters are, wh
             referenceImageUrls = resolved.urls
             referenceImageLabels = resolved.labels
           }
+          const refDuration = Date.now() - refStart
+          Sentry.logger.info(`[TIMING] reference image building: ${refDuration}ms`)
 
           const referencesAvailableForProvider = imageProvider.supportsReferenceImages && referenceImageUrls.length > 0
 
@@ -515,11 +526,19 @@ Each page must describe one clear visual moment — where the characters are, wh
           // to exhaust retries and silently return null.
           const generatedResults: ImageResult[] = []
           for (let imgIdx = 0; imgIdx < pagePrompts.length; imgIdx++) {
+            const imgStart = Date.now()
             const result = await imageProvider.generateImage(pagePrompts[imgIdx], {
               referenceImageUrl: referenceImageUrls[0],
               referenceImageUrls,
               referenceImageLabels,
               seed: storySeed,
+            })
+            const imgDuration = Date.now() - imgStart
+            const imgResultType = result.url === null ? "null" : result.isBlackImage ? "black" : "ok"
+            Sentry.logger.info(`[TIMING] image generation page ${imgIdx}: ${imgDuration}ms (${imgResultType})`, {
+              scene_index: imgIdx,
+              duration_ms: imgDuration,
+              result: imgResultType,
             })
             generatedResults.push(result)
             if (result.url === null) {
@@ -553,10 +572,16 @@ Each page must describe one clear visual moment — where the characters are, wh
                 return { url: STORY_IMAGE_ERROR_PATH, caption: null, scene_index: sceneIndex }
               }
 
+              const copyStart = Date.now()
               const storedPath = await copyRemoteImageToStoragePath({
                 supabase: service,
                 sourceUrl: result.url,
                 buildPath: (extension) => buildStoryImagePath(userRow.account_id, job.id, sceneIndex, extension),
+              })
+              const copyDuration = Date.now() - copyStart
+              Sentry.logger.info(`[TIMING] storage copy page ${sceneIndex}: ${copyDuration}ms`, {
+                scene_index: sceneIndex,
+                duration_ms: copyDuration,
               })
 
               if (storedPath) {
@@ -568,6 +593,8 @@ Each page must describe one clear visual moment — where the characters are, wh
           )
 
           images.push(...storageResults)
+          const pipelineDuration = Date.now() - pipelineStart
+          Sentry.logger.info(`[TIMING] image pipeline total: ${pipelineDuration}ms`)
         }
 
         const { data: story } = await service
