@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ChevronLeft, ChevronRight, Download } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { ChevronLeft, ChevronRight, Download, BookOpen, X } from "lucide-react"
 import { Story, StoryImage } from "@/types"
 import PromptModal from "./PromptModal"
 
@@ -79,15 +81,86 @@ function buildPages(content: string, images: StoryImage[]): Page[] {
 
 // ─── Page sub-components ──────────────────────────────────────────────────────
 
-function TitlePage({ story, dateLabel }: { story: Story; dateLabel: string }) {
+function TitlePage({
+  story,
+  dateLabel,
+  showCtas,
+  onStoryMode,
+  onNextPage,
+}: {
+  story: Story
+  dateLabel: string
+  showCtas: boolean
+  onStoryMode: () => void
+  onNextPage: () => void
+}) {
   return (
-    <div className="flex flex-col items-center justify-center gap-5 px-8 py-14 text-center">
-      <span className="text-5xl" aria-hidden="true">📖</span>
-      <h1 className="font-serif text-3xl font-bold leading-snug" style={{ color: "#2d1f0e" }}>
+    <div className="flex h-full flex-col items-center justify-center gap-6 px-10 py-14 text-center">
+      <span className="text-6xl drop-shadow-sm" aria-hidden="true">📖</span>
+      <h1 className="font-serif text-4xl font-bold leading-snug" style={{ color: "#2d1f0e" }}>
         {story.title}
       </h1>
-      <div className="h-px w-14" style={{ background: "#c4a882" }} />
-      <p className="text-sm" style={{ color: "#8a6f4e" }}>{dateLabel}</p>
+      <div className="h-px w-16" style={{ background: "#c4a882" }} />
+      <p className="text-sm uppercase tracking-[0.2em]" style={{ color: "#8a6f4e" }}>{dateLabel}</p>
+
+      {showCtas && (
+        <div className="mt-3 flex w-full max-w-[280px] flex-col items-stretch gap-3">
+          <button
+            onClick={onStoryMode}
+            className="flex items-center justify-center gap-2 rounded-full px-6 py-3 text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02]"
+            style={{ background: "linear-gradient(135deg, #7c3aed, #a855f7)" }}
+          >
+            <BookOpen className="h-5 w-5" />
+            Story Mode
+          </button>
+          <button
+            onClick={onNextPage}
+            className="flex items-center justify-center gap-1.5 rounded-full px-6 py-2.5 text-sm font-medium transition-colors"
+            style={{ color: "#8a6f4e" }}
+          >
+            Next page
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Fullscreen, edge-to-edge reading layout used in Story Mode.
+// >800px: image left / text right. ≤800px: image top / text below.
+// The image is pinned; only the text panel scrolls.
+function StoryModePage({ page }: { page: Page }) {
+  const hasImage = Boolean(page.image)
+  const isErrorPlaceholder = hasImage && page.image!.url === STORY_IMAGE_ERROR_PATH
+  return (
+    <div className="flex h-full w-full flex-col min-[801px]:flex-row" style={{ background: "#fdf8f0" }}>
+      {hasImage && (
+        <div className="relative shrink-0 overflow-hidden min-[801px]:h-full min-[801px]:w-1/2 min-[801px]:shrink">
+          <img
+            src={page.image!.url}
+            alt={isErrorPlaceholder ? "" : (page.image!.caption ?? "")}
+            className="aspect-[4/3] h-full w-full object-contain min-[801px]:aspect-auto"
+          />
+        </div>
+      )}
+      <div
+        className={`reader-scroll min-h-0 flex-1 overflow-y-auto px-8 pb-28 pt-10 ${
+          hasImage ? "min-[801px]:w-1/2" : "w-full"
+        }`}
+      >
+        {isErrorPlaceholder && (
+          <p className="mb-3 text-center text-xs text-muted-foreground">
+            We had trouble creating this illustration
+          </p>
+        )}
+        <p
+          className="mx-auto max-w-prose text-center font-serif text-lg leading-relaxed sm:text-xl"
+          style={{ color: "#2d1f0e" }}
+        >
+          {page.text}
+        </p>
+      </div>
     </div>
   )
 }
@@ -95,24 +168,33 @@ function TitlePage({ story, dateLabel }: { story: Story; dateLabel: string }) {
 function ImagePage({ page }: { page: Page }) {
   const isErrorPlaceholder = page.image!.url === STORY_IMAGE_ERROR_PATH
   return (
-    <div className="flex flex-col">
-      {/* Image at its natural landscape 4:3 ratio — no cropping */}
-      <div className="aspect-[4/3] w-full">
-        <img
-          src={page.image!.url}
-          alt={isErrorPlaceholder ? "" : (page.image!.caption ?? "")}
-          className="h-full w-full object-cover"
+    // Image stays pinned at the top; only the text panel below it scrolls.
+    <div className="flex h-full flex-col">
+      <div className="relative shrink-0">
+        {/* Image at its natural landscape 4:3 ratio — no cropping */}
+        <div className="aspect-[4/3] w-full overflow-hidden">
+          <img
+            src={page.image!.url}
+            alt={isErrorPlaceholder ? "" : (page.image!.caption ?? "")}
+            className="h-full w-full object-cover"
+          />
+        </div>
+        {/* Soft fade so the illustration melts into the page */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-12"
+          style={{ background: "linear-gradient(to top, #fdf8f0, rgba(253,248,240,0))" }}
+          aria-hidden="true"
         />
       </div>
-      {/* Text — unconstrained, grows to fit all content */}
-      <div className="px-6 pb-10 pt-5" style={{ background: "#fdf8f0" }}>
+      {/* Scrollable text panel */}
+      <div className="reader-scroll min-h-0 flex-1 overflow-y-auto px-8 pb-16 pt-3" style={{ background: "#fdf8f0" }}>
         {isErrorPlaceholder && (
           <p className="mb-3 text-center text-xs text-muted-foreground">
             We had trouble creating this illustration
           </p>
         )}
         <p
-          className="font-serif text-sm leading-relaxed text-center"
+          className="mx-auto max-w-prose text-center font-serif text-base leading-relaxed sm:text-lg"
           style={{ color: "#2d1f0e" }}
         >
           {page.text}
@@ -124,9 +206,9 @@ function ImagePage({ page }: { page: Page }) {
 
 function TextPage({ page }: { page: Page }) {
   return (
-    <div className="px-8 pb-10 pt-8">
+    <div className="reader-scroll flex h-full min-h-0 flex-col overflow-y-auto px-8 py-12">
       <p
-        className="font-serif text-lg leading-relaxed text-center"
+        className="m-auto max-w-prose text-center font-serif text-lg leading-relaxed sm:text-xl"
         style={{ color: "#2d1f0e" }}
       >
         {page.text}
@@ -135,25 +217,121 @@ function TextPage({ page }: { page: Page }) {
   )
 }
 
+// Bottom-center page navigation: prev · dots · next.
+function NavPill({
+  current,
+  total,
+  onPrev,
+  onNext,
+  onJump,
+}: {
+  current: number
+  total: number
+  onPrev: () => void
+  onNext: () => void
+  onJump: (i: number) => void
+}) {
+  return (
+    <div className="flex max-w-[92vw] items-center gap-3 rounded-full border border-white/10 bg-black/35 px-3 py-2 backdrop-blur-md">
+      <button
+        onClick={onPrev}
+        disabled={current === 0}
+        aria-label="Previous page"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-all hover:bg-white/20 disabled:opacity-30"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+
+      <div
+        className="flex max-w-[60vw] items-center gap-1.5 overflow-x-auto px-1"
+        aria-label={`Page ${current + 1} of ${total}`}
+      >
+        {Array.from({ length: total }).map((_, i) => (
+          <button
+            key={i}
+            onClick={() => onJump(i)}
+            aria-label={`Go to page ${i + 1}`}
+            className="h-2 shrink-0 rounded-full transition-all"
+            style={{
+              width: i === current ? "1.5rem" : "0.5rem",
+              background: i === current ? "#ffffff" : "rgba(255,255,255,0.35)",
+            }}
+          />
+        ))}
+      </div>
+
+      <button
+        onClick={onNext}
+        disabled={current === total - 1}
+        aria-label="Next page"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-all hover:bg-white/20 disabled:opacity-30"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+    </div>
+  )
+}
+
 // ─── BookReader ───────────────────────────────────────────────────────────────
 
-export default function BookReader({ story }: { story: Story }) {
+export default function BookReader({
+  story,
+  initialPage,
+  initialStoryMode,
+}: {
+  story: Story
+  initialPage: number
+  initialStoryMode: boolean
+}) {
   const pages = buildPages(story.content, story.images ?? [])
   const total = pages.length + 1 // 0 = title, 1..n = content
-  const [current, setCurrent] = useState(0)
+  const hasContent = total > 1
+  const pathname = usePathname()
+
+  const [current, setCurrent] = useState(() => {
+    const clamped = Math.min(Math.max(0, initialPage), total - 1)
+    // Story mode is never valid on the title page — start at the first content page.
+    if (initialStoryMode && clamped === 0 && hasContent) return 1
+    return clamped
+  })
+  const [storyMode, setStoryMode] = useState(() => initialStoryMode && hasContent)
   const [showPrompts, setShowPrompts] = useState(false)
 
   const prev = useCallback(() => setCurrent((i) => Math.max(0, i - 1)), [])
   const next = useCallback(() => setCurrent((i) => Math.min(total - 1, i + 1)), [total])
 
+  // Title CTA: enter immersive mode at the first content page.
+  const startStoryMode = useCallback(() => {
+    setStoryMode(true)
+    setCurrent(1)
+  }, [])
+  // Top-bar button: enter immersive mode on the current page (bump off the title).
+  const enterStoryMode = useCallback(() => {
+    setStoryMode(true)
+    setCurrent((i) => (i === 0 ? 1 : i))
+  }, [])
+  const exitStoryMode = useCallback(() => setStoryMode(false), [])
+  // Title CTA: read normally without entering story mode.
+  const goNextPageReadMode = useCallback(() => setCurrent(1), [])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") prev()
       if (e.key === "ArrowRight") next()
+      if (e.key === "Escape" && storyMode) exitStoryMode()
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [prev, next])
+  }, [prev, next, storyMode, exitStoryMode])
+
+  // Keep mode/page in the URL without triggering a server refetch (no router nav).
+  useEffect(() => {
+    const sp = new URLSearchParams()
+    if (storyMode) sp.set("mode", "story")
+    if (current > 0) sp.set("page", String(current))
+    const qs = sp.toString()
+    window.history.replaceState(window.history.state, "", qs ? `${pathname}?${qs}` : pathname)
+  }, [current, storyMode, pathname])
 
   const isTitle = current === 0
   const page = isTitle ? null : pages[current - 1]
@@ -165,90 +343,110 @@ export default function BookReader({ story }: { story: Story }) {
 
   return (
     <>
-      {/* ── Interactive reader (hidden when printing) ── */}
-      <div id="book-reader" className="flex flex-col items-center gap-6 py-4 px-4">
-        {/* Book */}
-        <div
-          className="relative w-full max-w-[480px] overflow-hidden rounded-2xl"
-          style={{
-            background: "#fdf8f0",
-            boxShadow: "0 10px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)",
-          }}
-        >
-          {/* Page content — keyed so each page mounts fresh and triggers the fade */}
-          <div key={current} className="book-page-anim">
-            {isTitle ? (
-              <TitlePage story={story} dateLabel={dateLabel} />
-            ) : page?.image ? (
-              <ImagePage page={page} />
-            ) : (
-              <TextPage page={page!} />
-            )}
+      {storyMode && page ? (
+        /* ── Story Mode: fullscreen viewport takeover ── */
+        <div className="no-print fixed inset-0 z-40" style={{ background: "#fdf8f0" }}>
+          {/* Keyed so each page mounts fresh and triggers the fade */}
+          <div key={current} className="book-page-anim absolute inset-0">
+            <StoryModePage page={page} />
           </div>
 
-          {/* Page number */}
-          <p
-            className="pointer-events-none absolute bottom-2.5 left-0 right-0 select-none text-center text-[10px]"
-            style={{ color: "#c4a882" }}
-          >
-            {current + 1}
-          </p>
-
-          {/* Corner curl */}
+          {/* Bottom controls: nav pill + exit */}
+          <div className="absolute bottom-5 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-3">
+            <NavPill current={current} total={total} onPrev={prev} onNext={next} onJump={setCurrent} />
+            <button
+              onClick={exitStoryMode}
+              className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-md transition-colors hover:bg-black/50 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+              Exit story mode
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── Read Mode: cozy centered book card ── */
+        <div
+          id="book-reader"
+          className="absolute inset-0 flex items-center justify-center px-4 py-4 sm:px-6 sm:py-6"
+        >
+          {/* Ambient glow behind the book */}
           <div
-            className="pointer-events-none absolute bottom-0 right-0 h-8 w-8"
-            style={{ background: "linear-gradient(225deg, #ddd0b8 45%, transparent 45%)" }}
+            className="pointer-events-none absolute left-1/2 top-1/2 -z-0 h-[70%] w-[70%] max-w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px]"
+            style={{ background: "radial-gradient(circle, rgba(167,139,250,0.30), transparent 70%)" }}
             aria-hidden="true"
           />
-        </div>
 
-        {/* Navigation */}
-        <div className="flex items-center gap-5">
-          <button
-            onClick={prev}
-            disabled={current === 0}
-            aria-label="Previous page"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-30"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-
-          <div className="flex items-center gap-1.5" aria-label={`Page ${current + 1} of ${total}`}>
-            {Array.from({ length: total }).map((_, i) => (
+          {/* Top bar: Library · Story Mode · Download */}
+          <div className="no-print absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4 py-3">
+            <Link
+              href="/library"
+              className="text-sm text-white/60 transition-colors hover:text-white"
+            >
+              ← Library
+            </Link>
+            <div className="flex items-center gap-2">
+              {current > 0 && hasContent && (
+                <button
+                  onClick={enterStoryMode}
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-[1.02]"
+                  style={{ background: "linear-gradient(135deg, #7c3aed, #a855f7)" }}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  <span className="hidden sm:inline">Story Mode</span>
+                </button>
+              )}
               <button
-                key={i}
-                onClick={() => setCurrent(i)}
-                aria-label={`Go to page ${i + 1}`}
-                className="h-2 rounded-full transition-all"
-                style={{
-                  width: i === current ? "1.5rem" : "0.5rem",
-                  background: i === current ? "#ffffff" : "rgba(255,255,255,0.3)",
-                }}
-              />
-            ))}
+                onClick={() => window.print()}
+                aria-label="Download PDF"
+                className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition-colors hover:bg-white/20"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Download PDF</span>
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={next}
-            disabled={current === total - 1}
-            aria-label="Next page"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-30"
+          {/* Book card */}
+          <div
+            className="relative z-10 flex h-full max-h-[920px] w-full max-w-[560px] flex-col overflow-hidden rounded-3xl ring-1 ring-white/10"
+            style={{
+              background: "#fdf8f0",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.25)",
+            }}
           >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
+            {/* Page content — keyed so each page mounts fresh and triggers the fade */}
+            <div key={current} className="book-page-anim min-h-0 flex-1">
+              {isTitle ? (
+                <TitlePage
+                  story={story}
+                  dateLabel={dateLabel}
+                  showCtas={hasContent}
+                  onStoryMode={startStoryMode}
+                  onNextPage={goNextPageReadMode}
+                />
+              ) : page?.image ? (
+                <ImagePage page={page} />
+              ) : (
+                <TextPage page={page!} />
+              )}
+            </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
-          >
-            <Download className="h-4 w-4" />
-            Download PDF
-          </button>
+            {/* Corner curl */}
+            <div
+              className="pointer-events-none absolute bottom-0 right-0 z-10 h-8 w-8"
+              style={{ background: "linear-gradient(225deg, #ddd0b8 45%, transparent 45%)" }}
+              aria-hidden="true"
+            />
+          </div>
+
+          {/* Bottom nav pill (content pages only — hidden on the title cover) */}
+          {current > 0 && (
+            <div className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2">
+              <NavPill current={current} total={total} onPrev={prev} onNext={next} onJump={setCurrent} />
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {showPrompts && story.generation_params && (
         <PromptModal
@@ -306,6 +504,17 @@ export default function BookReader({ story }: { story: Story }) {
           to   { opacity: 1; transform: translateX(0); }
         }
         .book-page-anim { animation: bookPageIn 0.2s ease-out; }
+
+        /* Slim, themed scrollbar for the text panel */
+        .reader-scroll { scrollbar-width: thin; scrollbar-color: #d9c7a6 transparent; }
+        .reader-scroll::-webkit-scrollbar { width: 8px; }
+        .reader-scroll::-webkit-scrollbar-track { background: transparent; }
+        .reader-scroll::-webkit-scrollbar-thumb {
+          background: #d9c7a6;
+          border-radius: 9999px;
+          border: 2px solid #fdf8f0;
+        }
+        .reader-scroll::-webkit-scrollbar-thumb:hover { background: #c4a882; }
 
         #print-layout { display: none; }
 

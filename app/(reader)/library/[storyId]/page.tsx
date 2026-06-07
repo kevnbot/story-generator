@@ -7,10 +7,16 @@ import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage
 
 export default async function StoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ storyId: string }>
+  searchParams: Promise<{ mode?: string; page?: string }>
 }) {
   const { storyId } = await params
+  const sp = await searchParams
+  const initialStoryMode = sp.mode === "story"
+  const parsedPage = Number.parseInt(sp.page ?? "", 10)
+  const initialPage = Number.isNaN(parsedPage) || parsedPage < 0 ? 0 : parsedPage
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -63,5 +69,11 @@ export default async function StoryDetailPage({
     images: resolveStoryImagesForUi((r.images ?? []) as Story["images"], signedUrlsByPath),
   }
 
-  return <BookReader story={story} />
+  return (
+    <BookReader
+      story={story}
+      initialPage={initialPage}
+      initialStoryMode={initialStoryMode}
+    />
+  )
 }
