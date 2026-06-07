@@ -1,11 +1,32 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Pencil, Trash2 } from "lucide-react"
 import { ProfileForm } from "./profile-form"
 import { deleteProfile } from "@/app/actions/profiles"
 import { formatAge } from "@/lib/ai/prompt-builder"
+
+interface HistoryRow {
+  id: string
+  image_type: string
+  image_url: string
+  created_at: string
+  profile_snapshot: Record<string, unknown> | null
+  is_active: boolean
+  activation_count: number
+  last_activated_at: string | null
+}
+
+interface IllustrationData {
+  character_illustration_url: string | null
+  toy_reference_image_url: string | null
+  illustration_status: string | null
+  history: {
+    character: HistoryRow[]
+    toy: HistoryRow[]
+  }
+}
 
 interface Profile {
   id: string
@@ -192,10 +213,33 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
   const [showForm, setShowForm] = useState(profiles.length === 0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  // Stores the last completed fetch result alongside the ID it belongs to
+  const [illustrationFetch, setIllustrationFetch] = useState<{
+    id: string
+    data: IllustrationData | null
+  } | null>(null)
+
+  useEffect(() => {
+    if (!editingId) return
+    const currentId = editingId
+    let cancelled = false
+
+    fetch(`/api/profiles/${currentId}/illustrations`)
+      .then(res => res.ok ? (res.json() as Promise<IllustrationData>) : Promise.resolve(null))
+      .then(data => { if (!cancelled) setIllustrationFetch({ id: currentId, data }) })
+      .catch(() => { if (!cancelled) setIllustrationFetch({ id: currentId, data: null }) })
+
+    return () => { cancelled = true }
+  }, [editingId])
 
   const handleDelete = (id: string) => {
     startTransition(async () => { await deleteProfile(id) })
   }
+
+  const editingProfile = profiles.find(p => p.id === editingId)
+  // Loading is true when we have an editingId but haven't received its data yet
+  const illustrationLoading = !!editingId && illustrationFetch?.id !== editingId
+  const illustrationData = illustrationFetch?.id === editingId ? illustrationFetch.data : null
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -208,13 +252,28 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
       </div>
 
       {/* Edit form — full width, above grid */}
-      {editingId && (
+      {editingId && editingProfile && (
         <div className="rounded-xl border p-5 bg-card">
           <h2 className="font-semibold mb-4">
-            Edit {profiles.find(p => p.id === editingId)?.name}
+            Edit {editingProfile.name}
           </h2>
+
+          {illustrationLoading ? (
+            <div className="h-8 flex items-center gap-2 text-sm text-muted-foreground mb-4">
+              <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
+              Loading illustration data…
+            </div>
+          ) : null}
+
           <ProfileForm
-            profile={profiles.find(p => p.id === editingId)}
+            profile={{
+              ...editingProfile,
+              character_illustration_url: illustrationData?.character_illustration_url ?? null,
+              toy_reference_image_url: illustrationData?.toy_reference_image_url ?? null,
+              illustration_status: illustrationData?.illustration_status ?? null,
+              character_history: illustrationData?.history.character ?? [],
+              toy_history: illustrationData?.history.toy ?? [],
+            }}
             onSuccess={() => setEditingId(null)}
           />
           <button
