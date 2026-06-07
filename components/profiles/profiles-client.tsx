@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Pencil, Trash2 } from "lucide-react"
 import { ProfileForm } from "./profile-form"
 import { deleteProfile } from "@/app/actions/profiles"
 import { formatAge } from "@/lib/ai/prompt-builder"
+import { createClient } from "@/lib/supabase/client"
+import type { KidProfile } from "@/types"
 
 interface HistoryRow {
   id: string
@@ -28,17 +30,7 @@ interface IllustrationData {
   }
 }
 
-interface Profile {
-  id: string
-  name: string
-  age: number
-  age_months: number
-  gender?: string
-  appearance: { hair?: string; hair_color?: string; eye_color?: string; skin_tone?: string }
-  personality_tags: string[]
-  toy: { name: string; description?: string; type?: string }
-  reference_image_url?: string | null
-}
+type Profile = KidProfile & { avatarUrl: string | null }
 
 // ─── TradingCard ──────────────────────────────────────────────────────────────
 
@@ -63,6 +55,8 @@ function TradingCard({
     toyName ? { label: "Toy", value: toyName } : null,
     trait ? { label: "Trait", value: trait } : null,
   ].filter(Boolean) as { label: string; value: string }[]
+
+  const isGenerating = profile.illustration_status === "generating" || profile.illustration_status === "pending"
 
   return (
     <div
@@ -102,13 +96,11 @@ function TradingCard({
           background: "linear-gradient(160deg, #2e1065 0%, #1e1b4b 100%)",
         }}
       >
-        {profile.reference_image_url ? (
+        {profile.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={profile.reference_image_url}
-            alt={profile.name}
-            className="w-full h-full object-contain"
-          />
+          <img src={profile.avatarUrl} alt={profile.name} className="w-full h-full object-contain" />
+        ) : isGenerating ? (
+          <div className="w-full h-full animate-pulse" style={{ background: "rgba(124,58,237,0.25)" }} />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl">
             🧒
@@ -209,8 +201,21 @@ function AddCard({ onClick }: { onClick: () => void }) {
 
 // ─── ProfilesClient ───────────────────────────────────────────────────────────
 
-export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
-  const [showForm, setShowForm] = useState(profiles.length === 0)
+export function ProfilesClient({
+  profiles: initialProfiles,
+  accountId,
+}: {
+  profiles: Profile[]
+  accountId: string
+}) {
+  // Realtime overrides keyed by profile id — merged on top of server-provided initialProfiles
+  const [profileOverrides, setProfileOverrides] = useState<Record<string, Partial<Profile>>>({})
+  const profiles = useMemo(
+    () => initialProfiles.map(p => ({ ...p, ...profileOverrides[p.id] })),
+    [initialProfiles, profileOverrides]
+  )
+
+  const [showForm, setShowForm] = useState(initialProfiles.length === 0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   // Stores the last completed fetch result alongside the ID it belongs to
@@ -219,15 +224,64 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
     data: IllustrationData | null
   } | null>(null)
 
+  // Realtime subscription for illustration status updates
+  useEffect(() => {
+    if (!accountId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel("profile-illustration-updates")
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "kid_profiles",
+        filter: `account_id=eq.${accountId}`,
+      }, async (payload) => {
+        const updated = payload.new as Record<string, unknown>
+        const profileId = updated.id as string
+        if (updated.illustration_status === "complete") {
+          const res = await fetch(`/api/profiles/${profileId}/illustrations`)
+          if (res.ok) {
+            const data = await res.json() as {
+              combined_reference_url?: string | null
+              character_illustration_url?: string | null
+              reference_image_url?: string | null
+            }
+            const freshAvatarUrl = data.combined_reference_url ?? data.character_illustration_url ?? data.reference_image_url ?? null
+            setProfileOverrides(prev => ({
+              ...prev,
+              [profileId]: { ...prev[profileId], avatarUrl: freshAvatarUrl, illustration_status: "complete" },
+            }))
+          }
+        } else {
+          setProfileOverrides(prev => ({
+            ...prev,
+            [profileId]: { ...prev[profileId], illustration_status: updated.illustration_status as string | null },
+          }))
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [accountId])
+
   useEffect(() => {
     if (!editingId) return
     const currentId = editingId
     let cancelled = false
 
     fetch(`/api/profiles/${currentId}/illustrations`)
-      .then(res => res.ok ? (res.json() as Promise<IllustrationData>) : Promise.resolve(null))
+      .then(res => {
+        if (!res.ok) {
+          console.error(`[profiles] illustration fetch failed: HTTP ${res.status} for profile ${currentId}`)
+          return Promise.resolve(null)
+        }
+        return res.json() as Promise<IllustrationData>
+      })
       .then(data => { if (!cancelled) setIllustrationFetch({ id: currentId, data }) })
-      .catch(() => { if (!cancelled) setIllustrationFetch({ id: currentId, data: null }) })
+      .catch(err => {
+        console.error("[profiles] illustration fetch error:", err)
+        if (!cancelled) setIllustrationFetch({ id: currentId, data: null })
+      })
 
     return () => { cancelled = true }
   }, [editingId])
@@ -258,19 +312,36 @@ export function ProfilesClient({ profiles }: { profiles: Profile[] }) {
             Edit {editingProfile.name}
           </h2>
 
-          {illustrationLoading ? (
+          {illustrationLoading && (
             <div className="h-8 flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
               Loading illustration data…
             </div>
-          ) : null}
+          )}
 
+          {/*
+            Key changes from "-pending" to "-loaded" once illustration data arrives,
+            forcing ProfileForm to remount so its useState initializers pick up the
+            history rows and resolved URLs from the API response.
+            Server-resolved URLs from the page query are used as immediate fallbacks
+            so the image is visible before the API call completes.
+          */}
           <ProfileForm
+            key={illustrationLoading ? `${editingId}-pending` : `${editingId}-loaded`}
             profile={{
               ...editingProfile,
-              character_illustration_url: illustrationData?.character_illustration_url ?? null,
-              toy_reference_image_url: illustrationData?.toy_reference_image_url ?? null,
-              illustration_status: illustrationData?.illustration_status ?? null,
+              character_illustration_url:
+                illustrationData?.character_illustration_url
+                ?? editingProfile.character_illustration_url
+                ?? null,
+              toy_reference_image_url:
+                illustrationData?.toy_reference_image_url
+                ?? editingProfile.toy_reference_image_url
+                ?? null,
+              illustration_status:
+                illustrationData?.illustration_status
+                ?? editingProfile.illustration_status
+                ?? null,
               character_history: illustrationData?.history.character ?? [],
               toy_history: illustrationData?.history.toy ?? [],
             }}

@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
-import { generateProfileReferenceImage } from "@/lib/ai/image"
-import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath } from "@/lib/storage/images"
+import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
+import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap } from "@/lib/storage/images"
 import type { KidAppearance, KidToy, KidProfile } from "@/types"
 
 function parseProfileFormData(formData: FormData): {
@@ -168,34 +168,63 @@ export async function updateProfile(profileId: string, prevState: string | null,
         .eq("id", profileId)
         .eq("account_id", userRow.account_id)
         .is("deleted_at", null)
-        .select("*")
+        .select("id, character_illustration_path, character_illustration_url")
         .single()
 
       if (error) return error.message
 
       if (updated) {
-        const referenceUrl = await generateProfileReferenceImage(updated as KidProfile).catch(() => null)
-        if (referenceUrl) {
-          const storedPath = await copyRemoteImageToStoragePath({
-            supabase: service,
-            sourceUrl: referenceUrl,
-            buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, profileId, extension),
-          })
+        const p = updated as { id: string; character_illustration_path?: string | null; character_illustration_url?: string | null }
+        const hasCharIllustration = !!(p.character_illustration_path || p.character_illustration_url)
 
-          if (storedPath) {
-            await service
+        if (hasCharIllustration) {
+          await service.from("kid_profiles").update({ illustration_status: "generating" }).eq("id", profileId)
+
+          ;(async () => {
+            const { data: freshRow } = await service
               .from("kid_profiles")
-              .update({
-                reference_image_path: storedPath,
-                reference_image_url: null,
-              })
+              .select(
+                "id, name, age, age_months, gender, appearance, personality_tags, toy, " +
+                "character_illustration_path, character_illustration_url, " +
+                "toy_reference_image_path, toy_reference_image_url, " +
+                "reference_image_path, reference_image_url, combined_reference_path"
+              )
               .eq("id", profileId)
-          } else {
-            await service
-              .from("kid_profiles")
-              .update({ reference_image_url: referenceUrl })
-              .eq("id", profileId)
-          }
+              .single()
+
+            if (!freshRow) {
+              await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
+              return
+            }
+
+            const fresh = freshRow as unknown as KidProfile & {
+              character_illustration_path?: string | null
+              character_illustration_url?: string | null
+            }
+
+            const charPath = fresh.character_illustration_path
+            const charUrl = fresh.character_illustration_url
+              ?? (charPath ? (await createSignedImageUrlsMap(service, [charPath])).get(charPath) ?? null : null)
+
+            if (!charUrl) {
+              await service.from("kid_profiles").update({ illustration_status: "complete" }).eq("id", profileId)
+              return
+            }
+
+            // Build toy description string from fresh profile toy fields
+            const freshToy = fresh.toy as KidToy | null
+            let toyDescription: string | null = null
+            if (freshToy?.name) {
+              toyDescription = freshToy.name
+              const extra: string[] = []
+              if (freshToy.color) extra.push(freshToy.color)
+              if (freshToy.type) extra.push(freshToy.type)
+              if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
+              if (freshToy.description) toyDescription += ` — ${freshToy.description}`
+            }
+
+            await generateAndSaveCombinedReference(profileId, charUrl, toyDescription)
+          })().catch(() => null)
         }
       }
 

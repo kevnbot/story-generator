@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { generateProfileReferenceImage } from "@/lib/ai/image"
+import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
 import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
 import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
 import { copyRemoteImageToStoragePath, createSignedImageUrlsMap, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
@@ -13,6 +13,16 @@ type ExtProfile = KidProfile & {
   toy_reference_image_path?: string | null
   toy_reference_image_url?: string | null
   illustration_status?: string | null
+}
+
+// Unsaved form field values sent from the client so the prompt reflects
+// what the user currently sees rather than the last-saved database state.
+interface CurrentFields {
+  name?: string
+  gender?: string
+  appearance?: { eye_color?: string; skin_tone?: string; hair?: string }
+  personality_tags?: string[]
+  toy?: { name?: string; description?: string }
 }
 
 async function falPost(model: string, body: Record<string, unknown>): Promise<Response> {
@@ -36,7 +46,11 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json().catch(() => null)
-  const { profileId, step } = (body ?? {}) as { profileId?: string; step?: string }
+  const { profileId, step, currentFields } = (body ?? {}) as {
+    profileId?: string
+    step?: string
+    currentFields?: CurrentFields
+  }
 
   if (!profileId) return NextResponse.json({ error: "profileId required" }, { status: 400 })
   if (step !== "character" && step !== "toy") {
@@ -78,7 +92,29 @@ export async function POST(request: NextRequest) {
 
   const profile = profileRow as unknown as ExtProfile
 
-  if (step === "toy" && !profile.toy?.name) {
+  // Merge unsaved form field values over the database profile so the prompt
+  // reflects what the user currently sees, not just what's been saved.
+  const effectiveProfile: ExtProfile = currentFields
+    ? {
+        ...profile,
+        name: currentFields.name ?? profile.name,
+        gender: currentFields.gender ?? profile.gender,
+        appearance: {
+          ...profile.appearance,
+          eye_color: currentFields.appearance?.eye_color ?? profile.appearance?.eye_color,
+          skin_tone: currentFields.appearance?.skin_tone ?? profile.appearance?.skin_tone,
+          hair: currentFields.appearance?.hair ?? profile.appearance?.hair,
+        },
+        personality_tags: currentFields.personality_tags ?? profile.personality_tags,
+        toy: {
+          ...profile.toy,
+          name: currentFields.toy?.name ?? profile.toy?.name ?? "",
+          description: currentFields.toy?.description ?? profile.toy?.description,
+        },
+      }
+    : profile
+
+  if (step === "toy" && !effectiveProfile.toy?.name) {
     return NextResponse.json({ error: "Profile has no toy name" }, { status: 400 })
   }
 
@@ -87,7 +123,7 @@ export async function POST(request: NextRequest) {
   let imageError: string | null = null
 
   if (step === "character") {
-    imageUrl = await generateProfileReferenceImage(profile).catch((e: unknown) => {
+    imageUrl = await generateProfileReferenceImage(effectiveProfile).catch((e: unknown) => {
       imageError = (e instanceof Error ? e.message : null) ?? "Generation failed"
       return null
     })
@@ -96,7 +132,7 @@ export async function POST(request: NextRequest) {
     if (!process.env.FAL_KEY) {
       return NextResponse.json({ error: "FAL_KEY not configured" }, { status: 500 })
     }
-    const toyPrompt = buildToyIllustrationPrompt(profile.toy)
+    const toyPrompt = buildToyIllustrationPrompt(effectiveProfile)
     const res = await falPost("fal-ai/flux/dev", {
       prompt: toyPrompt,
       negative_prompt: NEGATIVE_PROMPT,
@@ -126,7 +162,20 @@ export async function POST(request: NextRequest) {
 
   const service = createServiceClient()
 
-  // Deduct credit
+  // Save image to storage before deducting credit
+  const ts = Date.now()
+  const path = await copyRemoteImageToStoragePath({
+    supabase: service,
+    sourceUrl: imageUrl,
+    buildPath: (ext) => `accounts/${accountId}/profiles/${profileId}/${step}/${ts}.${ext}`,
+    bucket: GENERATED_IMAGES_BUCKET,
+  })
+
+  if (!path) {
+    return NextResponse.json({ error: "Failed to save image to storage" }, { status: 500 })
+  }
+
+  // Deduct credit after successful save
   const { error: creditError } = await service
     .from("accounts")
     .update({ credit_balance: creditBalance - 1 })
@@ -151,14 +200,15 @@ export async function POST(request: NextRequest) {
       reference_id: profileId,
     })
 
+    // Snapshot records what was actually used to generate this image
     const profileSnapshot = {
-      name: profile.name,
-      gender: profile.gender,
-      age: profile.age,
-      age_months: profile.age_months,
-      appearance: profile.appearance,
-      personality_tags: profile.personality_tags,
-      toy: profile.toy,
+      name: effectiveProfile.name,
+      gender: effectiveProfile.gender,
+      age: effectiveProfile.age,
+      age_months: effectiveProfile.age_months,
+      appearance: effectiveProfile.appearance,
+      personality_tags: effectiveProfile.personality_tags,
+      toy: effectiveProfile.toy,
     }
 
     const isChar = step === "character"
@@ -191,19 +241,9 @@ export async function POST(request: NextRequest) {
       .eq("profile_id", profileId)
       .eq("image_type", step)
 
-    const ts = Date.now()
-    const path = await copyRemoteImageToStoragePath({
-      supabase: service,
-      sourceUrl: imageUrl,
-      buildPath: (ext) => `accounts/${accountId}/profiles/${profileId}/${step}/${ts}.${ext}`,
-      bucket: GENERATED_IMAGES_BUCKET,
-    })
-
-    if (!path) throw new Error("Failed to save image to storage")
-
     const profileUpdates = isChar
-      ? { character_illustration_path: path, character_illustration_url: null, illustration_status: "generating" }
-      : { toy_reference_image_path: path, toy_reference_image_url: null, illustration_status: "generating" }
+      ? { character_illustration_path: path, character_illustration_url: null, illustration_status: "complete" }
+      : { toy_reference_image_path: path, toy_reference_image_url: null, illustration_status: "complete" }
 
     await service
       .from("kid_profiles")
@@ -219,6 +259,30 @@ export async function POST(request: NextRequest) {
       profile_snapshot: profileSnapshot,
       is_active: true,
     })
+
+    // Fire-and-forget combined generation if profile now has both character and toy
+    const charPath = isChar ? path : profile.character_illustration_path
+    const hasToyName = !!effectiveProfile.toy?.name
+    if (charPath && hasToyName) {
+      ;(async () => {
+        const signedMap = await createSignedImageUrlsMap(service, [charPath])
+        const charUrl = signedMap.get(charPath) ?? null
+        if (!charUrl) return
+
+        const toyData = effectiveProfile.toy
+        let toyDescription: string | null = null
+        if (toyData?.name) {
+          toyDescription = toyData.name
+          const extra: string[] = []
+          if (toyData.color) extra.push(toyData.color)
+          if (toyData.type) extra.push(toyData.type)
+          if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
+          if (toyData.description) toyDescription += ` — ${toyData.description}`
+        }
+
+        await generateAndSaveCombinedReference(profileId, charUrl, toyDescription)
+      })().catch(() => null)
+    }
 
     return NextResponse.json({ url: imageUrl, path })
   } catch (e) {
