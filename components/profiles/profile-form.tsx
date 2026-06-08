@@ -29,6 +29,7 @@ interface EditProfile {
   appearance: { hair?: string; hair_color?: string; eye_color?: string; skin_tone?: string }
   personality_tags: string[]
   toy: { name: string; description?: string; type?: string }
+  reference_image_url?: string | null
   character_illustration_url?: string | null
   toy_reference_image_url?: string | null
   illustration_status?: string | null
@@ -39,6 +40,8 @@ interface EditProfile {
 interface ProfileFormProps {
   onSuccess?: () => void
   profile?: EditProfile
+  waitForIllustration?: boolean
+  profileId?: string
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -348,16 +351,51 @@ function IllustrationBlock({
 
 // ─── ProfileForm ───────────────────────────────────────────────────────────────
 
-export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
+export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId }: ProfileFormProps) {
   const action = profile ? updateProfile.bind(null, profile.id) : createProfile
   const submittedRef = useRef(false)
   const [error, formAction, pending] = useActionState(action, null)
+  const [waitingForIllustration, setWaitingForIllustration] = useState(false)
 
   useEffect(() => {
     if (!submittedRef.current || pending) return
     submittedRef.current = false
-    if (error === null) onSuccess?.()
-  }, [error, onSuccess, pending])
+    if (error !== null) return
+
+    if (waitForIllustration && profileId) {
+      const start = Date.now()
+      const TIMEOUT_MS = 90_000
+
+      const poll = async () => {
+        if (Date.now() - start > TIMEOUT_MS) {
+          setWaitingForIllustration(false)
+          onSuccess?.()
+          return
+        }
+        try {
+          const res = await fetch(`/api/profiles/${profileId}/illustration-status`)
+          if (res.ok) {
+            const json = await res.json() as { illustration_status: string | null }
+            const status = json.illustration_status
+            if (status === "complete" || status === "failed" || status === "none") {
+              setWaitingForIllustration(false)
+              onSuccess?.()
+              return
+            }
+          }
+        } catch {
+          // network error — keep polling
+        }
+        setTimeout(poll, 2000)
+      }
+
+      // Defer into a callback so setState is not called synchronously inside the effect
+      setTimeout(() => { setWaitingForIllustration(true); void poll() }, 0)
+      return
+    }
+
+    onSuccess?.()
+  }, [error, onSuccess, pending, waitForIllustration, profileId])
 
   // ── Edit-mode initial values (safe to compute even in create mode) ──
   const initialToyName = profile?.toy?.name === "their favorite toy" ? "" : (profile?.toy?.name ?? "")
@@ -390,7 +428,7 @@ export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
     toy_description: initialToyDesc,
   })
 
-  const [charUrl, setCharUrl] = useState<string | null>(profile?.character_illustration_url ?? null)
+  const [charUrl, setCharUrl] = useState<string | null>(profile?.character_illustration_url ?? profile?.reference_image_url ?? null)
   const [toyUrl, setToyUrl] = useState<string | null>(profile?.toy_reference_image_url ?? null)
   const [charHistory] = useState<HistoryRow[]>(profile?.character_history ?? [])
   const [toyHistory] = useState<HistoryRow[]>(profile?.toy_history ?? [])
@@ -748,9 +786,19 @@ export function ProfileForm({ onSuccess, profile }: ProfileFormProps) {
       {/* ── Save / Error ── */}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Button type="submit" disabled={pending} className="w-full">
-        {pending ? "Saving..." : "Save Changes"}
-      </Button>
+      {waitingForIllustration ? (
+        <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+          <svg className="animate-spin h-4 w-4" style={{ color: "#7c3aed" }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          Creating new character art…
+        </div>
+      ) : (
+        <Button type="submit" disabled={pending} className="w-full" style={{ background: "#7c3aed", color: "white" }}>
+          {pending ? "Saving…" : profile ? "Save changes" : "Create character"}
+        </Button>
+      )}
     </form>
   )
 }

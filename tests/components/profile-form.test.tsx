@@ -46,6 +46,6 @@ describe("ProfileForm", () => {
     expect(screen.getByLabelText("Child's name")).toHaveValue("Luna")
     expect(screen.getByLabelText("Years")).toHaveValue(6)
     expect(screen.getByLabelText("Months")).toHaveValue(3)
-    expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled()
   })
 })

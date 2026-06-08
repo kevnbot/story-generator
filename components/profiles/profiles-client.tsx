@@ -92,7 +92,7 @@ function TradingCard({
           borderRadius: 8,
           overflow: "hidden",
           border: "1.5px solid rgba(251,191,36,0.35)",
-          height: 160,
+          aspectRatio: "3 / 4",
           background: "linear-gradient(160deg, #2e1065 0%, #1e1b4b 100%)",
         }}
       >
@@ -346,6 +346,8 @@ export function ProfilesClient({
               toy_history: illustrationData?.history.toy ?? [],
             }}
             onSuccess={() => setEditingId(null)}
+            waitForIllustration={true}
+            profileId={editingId ?? undefined}
           />
           <button
             type="button"
