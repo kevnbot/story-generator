@@ -251,12 +251,15 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
       .update(profileUpdates)
       .eq("id", profileId)
 
+    const signedForHistory = await createSignedImageUrlsMap(service, [path])
+    const historyUrl = signedForHistory.get(path) ?? imageUrl
+
     await service.from("profile_reference_image_history").insert({
       profile_id: profileId,
       account_id: accountId,
       image_type: step,
       image_path: path,
-      image_url: imageUrl,
+      image_url: historyUrl,
       profile_snapshot: profileSnapshot,
       is_active: true,
     })

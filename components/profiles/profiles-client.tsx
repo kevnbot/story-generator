@@ -405,7 +405,13 @@ export function ProfilesClient({
             const freshAvatarUrl = data.combined_reference_url ?? data.character_illustration_url ?? data.reference_image_url ?? null
             setProfileOverrides(prev => ({
               ...prev,
-              [profileId]: { ...prev[profileId], avatarUrl: freshAvatarUrl, illustration_status: "complete" },
+              [profileId]: {
+                ...prev[profileId],
+                avatarUrl: freshAvatarUrl,
+                combined_reference_url: data.combined_reference_url ?? null,
+                character_illustration_url: data.character_illustration_url ?? null,
+                illustration_status: "complete",
+              },
             }))
           }
         } else {
