@@ -7,6 +7,19 @@ import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSig
 import { logError } from "@/lib/logger"
 import type { KidProfile, KidToy } from "@/types"
 
+async function failWithError(
+  service: ReturnType<typeof createServiceClient>,
+  profileId: string,
+  message: string
+) {
+  try {
+    await service
+      .from("kid_profiles")
+      .update({ illustration_status: "failed", illustration_error: message.slice(0, 500) })
+      .eq("id", profileId)
+  } catch {}
+}
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ profileId: string }> }
@@ -41,10 +54,17 @@ export async function POST(
     // Step 1 — Character illustration
     await service.from("kid_profiles").update({ illustration_status: "generating" }).eq("id", profileId)
 
-    const referenceUrl = await generateProfileReferenceImage(profile).catch(() => null)
+    let referenceUrl: string | null = null
+    let charError: string | null = null
+    try {
+      referenceUrl = await generateProfileReferenceImage(profile)
+    } catch (e) {
+      charError = e instanceof Error ? e.message : "Character generation failed"
+    }
+
     if (!referenceUrl) {
-      await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
-      return NextResponse.json({ error: "Character illustration failed" }, { status: 500 })
+      await failWithError(service, profileId, charError ?? "Character generation returned no URL")
+      return NextResponse.json({ error: charError }, { status: 500 })
     }
 
     const storedCharPath = await copyRemoteImageToStoragePath({
@@ -67,34 +87,39 @@ export async function POST(
       : referenceUrl
 
     if (!charUrlForNext) {
-      await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
+      await failWithError(service, profileId, "Could not resolve character URL")
       return NextResponse.json({ error: "Could not resolve character URL" }, { status: 500 })
     }
 
-    // Step 2 — Toy illustration (if toy name provided)
+    // Step 2 — Toy illustration (non-fatal)
     const toy = profile.toy as KidToy | null
     const hasToyName = !!(toy?.name && toy.name !== "their favorite toy")
 
     if (hasToyName && toy) {
-      const toyPrompt = buildToyIllustrationPrompt(toy)
-      const falResponse = await fetch("https://fal.run/fal-ai/flux/dev", {
-        method: "POST",
-        headers: {
-          Authorization: `Key ${process.env.FAL_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: toyPrompt,
-          negative_prompt: NEGATIVE_PROMPT,
-          image_size: "square_hd",
-          num_inference_steps: 32,
-          guidance_scale: 7.0,
-          num_images: 1,
-        }),
-      }).catch(() => null)
+      try {
+        const toyPrompt = buildToyIllustrationPrompt(toy)
+        const falResponse = await fetch("https://fal.run/fal-ai/flux/dev", {
+          method: "POST",
+          headers: {
+            Authorization: `Key ${process.env.FAL_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: toyPrompt,
+            negative_prompt: NEGATIVE_PROMPT,
+            image_size: "square_hd",
+            num_inference_steps: 32,
+            guidance_scale: 7.0,
+            num_images: 1,
+          }),
+        })
 
-      if (falResponse?.ok) {
-        const falData = await falResponse.json().catch(() => null) as { images?: { url: string }[] } | null
+        if (!falResponse.ok) {
+          const body = await falResponse.text().catch(() => `HTTP ${falResponse.status}`)
+          throw new Error(`fal error ${falResponse.status}: ${body.slice(0, 300)}`)
+        }
+
+        const falData = await falResponse.json() as { images?: { url: string }[] }
         const toyImageUrl = falData?.images?.[0]?.url ?? null
 
         if (toyImageUrl) {
@@ -115,7 +140,9 @@ export async function POST(
             )
             .eq("id", profileId)
         }
-        // Toy failure is non-fatal — continue to combined
+      } catch (e) {
+        // Toy failure is non-fatal — log it but continue to combined
+        logError("toy illustration failed", e, { profile_id: profileId })
       }
     }
 
@@ -129,13 +156,19 @@ export async function POST(
       if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
       if (toy.description) toyDescription += ` — ${toy.description}`
     }
-    await generateAndSaveCombinedReference(profileId, charUrlForNext, toyDescription)
-    // generateAndSaveCombinedReference sets illustration_status = "complete"
+
+    try {
+      await generateAndSaveCombinedReference(profileId, charUrlForNext, toyDescription)
+      // generateAndSaveCombinedReference sets illustration_status = "complete"
+    } catch (e) {
+      await failWithError(service, profileId, e instanceof Error ? e.message : "Combined reference failed")
+      return NextResponse.json({ error: "Combined reference failed" }, { status: 500 })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (e) {
     logError("generate-all-references failed", e, { profile_id: profileId })
-    try { await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId) } catch {}
+    await failWithError(service, profileId, e instanceof Error ? e.message : "Pipeline failed")
     return NextResponse.json({ error: "Pipeline failed" }, { status: 500 })
   }
 }

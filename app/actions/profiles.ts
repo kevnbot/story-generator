@@ -120,7 +120,17 @@ export async function createProfile(
       fetch(`${baseUrl}/api/profiles/${inserted.id}/generate-all-references`, {
         method: "POST",
         headers: { Cookie: cookieHeader },
-      }).catch(() => null)
+      }).then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => `HTTP ${res.status}`)
+          logError("generate-all-references fetch failed", new Error(body), {
+            profile_id: inserted.id,
+            status: res.status,
+          })
+        }
+      }).catch((e) => {
+        logError("generate-all-references fetch error", e, { profile_id: inserted.id })
+      })
     }
 
     revalidatePath("/profiles")

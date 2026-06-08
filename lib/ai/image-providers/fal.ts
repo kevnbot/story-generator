@@ -141,8 +141,8 @@ export const falProvider: ImageProvider = {
 
 // ─── fal.ai-specific utilities (profile & style management) ───────────────────
 
-export async function generateProfileReferenceImage(profile: KidProfile): Promise<string | null> {
-  if (!process.env.FAL_KEY) return null
+export async function generateProfileReferenceImage(profile: KidProfile): Promise<string> {
+  if (!process.env.FAL_KEY) throw new Error("FAL_KEY not configured")
 
   const prompt = buildReferenceImagePrompt(profile)
   const isInfant = profile.age === 0
@@ -161,16 +161,14 @@ export async function generateProfileReferenceImage(profile: KidProfile): Promis
   })
 
   if (!response.ok) {
-    logger.error("fal.ai reference image generation failed", {
-      provider: "fal.ai",
-      model: "fal-ai/flux/dev",
-      status_code: response.status,
-    })
-    return null
+    const body = await response.text().catch(() => `HTTP ${response.status}`)
+    throw new Error(`fal error ${response.status}: ${body.slice(0, 300)}`)
   }
 
   const data = await response.json()
-  return data.images?.[0]?.url ?? null
+  const url = data.images?.[0]?.url ?? null
+  if (!url) throw new Error("fal returned no image URL")
+  return url
 }
 
 export async function generateGroupReferenceImage(
