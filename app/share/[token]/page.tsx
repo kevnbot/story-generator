@@ -6,6 +6,12 @@ import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage
 
 export const metadata = {
   title: "A story to read",
+  // Shared stories contain a real child's details — never let them be indexed.
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false },
+  },
 }
 
 export default async function SharePage({
