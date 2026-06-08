@@ -1,16 +1,17 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
+import type { CreateProfileResult } from "@/app/actions/profiles"
 
 vi.mock("@/app/actions/profiles", () => ({
-  createProfile: vi.fn(async (_prev: string | null, formData: FormData) => {
+  createProfile: vi.fn(async (_prev: CreateProfileResult | null, formData: FormData) => {
     const name = String(formData.get("name") ?? "").trim()
     const age = Number.parseInt(String(formData.get("age") ?? "0"), 10)
     const months = Number.parseInt(String(formData.get("age_months") ?? "0"), 10)
 
-    if (!name) return "Name is required"
-    if (Number.isNaN(age) || age < 0 || age > 17) return "Age must be between 0 and 17"
-    if (Number.isNaN(months) || months < 0 || months > 11) return "Months must be between 0 and 11"
-    return null
+    if (!name) return { error: "Name is required" }
+    if (Number.isNaN(age) || age < 0 || age > 17) return { error: "Age must be between 0 and 17" }
+    if (Number.isNaN(months) || months < 0 || months > 11) return { error: "Months must be between 0 and 11" }
+    return { profileId: "kid-test-new" }
   }),
   updateProfile: vi.fn(async () => null),
 }))

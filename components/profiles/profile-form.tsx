@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createProfile, updateProfile } from "@/app/actions/profiles"
+import type { CreateProfileResult } from "@/app/actions/profiles"
 import { ChevronDown, History, Info, Loader2, RefreshCw, UserCircle, Wand2 } from "lucide-react"
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ interface EditProfile {
 
 interface ProfileFormProps {
   onSuccess?: () => void
+  onCreated?: (profileId: string, characterName: string) => void
   profile?: EditProfile
   waitForIllustration?: boolean
   profileId?: string
@@ -352,16 +354,32 @@ function IllustrationBlock({
 
 // ─── ProfileForm ───────────────────────────────────────────────────────────────
 
-export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId }: ProfileFormProps) {
+export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration, profileId }: ProfileFormProps) {
   const action = profile ? updateProfile.bind(null, profile.id) : createProfile
   const submittedRef = useRef(false)
-  const [error, formAction, pending] = useActionState(action, null)
+  const submittedNameRef = useRef<string>("")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [actionState, formAction, pending] = useActionState(action as any, null as CreateProfileResult | string | null)
   const [waitingForIllustration, setWaitingForIllustration] = useState(false)
+
+  // Derive a plain error string from the polymorphic action state
+  const errorMsg = actionState === null ? null
+    : typeof actionState === "string" ? actionState
+    : "error" in actionState ? (actionState.error ?? null)
+    : null
 
   useEffect(() => {
     if (!submittedRef.current || pending) return
     submittedRef.current = false
-    if (error !== null) return
+
+    // Create-mode success: action returned { profileId }
+    if (!profile && actionState && typeof actionState === "object" && "profileId" in actionState && actionState.profileId) {
+      onCreated?.(actionState.profileId, submittedNameRef.current)
+      return
+    }
+
+    // Any error: stop here
+    if (errorMsg !== null) return
 
     if (waitForIllustration && profileId) {
       const start = Date.now()
@@ -396,7 +414,7 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
     }
 
     onSuccess?.()
-  }, [error, onSuccess, pending, waitForIllustration, profileId])
+  }, [actionState, errorMsg, onCreated, onSuccess, pending, waitForIllustration, profileId, profile])
 
   // ── Edit-mode initial values (safe to compute even in create mode) ──
   const initialToyName = profile?.toy?.name === "their favorite toy" ? "" : (profile?.toy?.name ?? "")
@@ -447,7 +465,11 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
   // ── Create mode: early return (after all hooks) ──
   if (!profile) {
     return (
-      <form action={formAction} onSubmit={() => { submittedRef.current = true }} className="space-y-5">
+      <form action={formAction} onSubmit={(e) => {
+        submittedRef.current = true
+        const fd = new FormData(e.currentTarget)
+        submittedNameRef.current = String(fd.get("name") ?? "").trim()
+      }} className="space-y-5">
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-1 space-y-1.5">
             <Label htmlFor="name">Child&apos;s name</Label>
@@ -530,7 +552,7 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
             <Input id="toy_description" name="toy_description" placeholder="a worn brown stuffed bear" />
           </div>
         </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
         <Button type="submit" disabled={pending} className="w-full">
           {pending ? "Saving..." : "Add Profile"}
         </Button>
@@ -888,7 +910,7 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
       )}
 
       {/* ── Save / Error ── */}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
       {waitingForIllustration ? (
         <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">

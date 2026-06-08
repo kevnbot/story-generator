@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect, useMemo } from "react"
+import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { ProfileForm } from "./profile-form"
@@ -200,6 +200,157 @@ function AddCard({ onClick }: { onClick: () => void }) {
   )
 }
 
+// ─── LumaGeneratingOverlay ────────────────────────────────────────────────────
+
+function LumaGeneratingOverlay({
+  profileId,
+  name,
+  onComplete,
+  onError,
+}: {
+  profileId: string
+  name: string
+  onComplete: () => void
+  onError: () => void
+}) {
+  const TIMEOUT_MS = 90_000
+  const [timedOut, setTimedOut] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
+
+  const message = elapsed < 20
+    ? `Luma is drawing ${name}'s portrait…`
+    : elapsed < 45
+    ? `Now bringing their companion to life…`
+    : `Almost done — putting it all together…`
+
+  useEffect(() => {
+    const startTime = Date.now()
+    let done = false
+
+    const tick = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    const poll = async () => {
+      if (done) return
+      if (Date.now() - startTime > TIMEOUT_MS) {
+        done = true
+        clearInterval(tick)
+        setTimedOut(true)
+        return
+      }
+      try {
+        const res = await fetch(`/api/profiles/${profileId}/illustration-status`)
+        if (res.ok) {
+          const json = await res.json() as { illustration_status: string | null }
+          const status = json.illustration_status
+          if (status === "complete") {
+            done = true
+            clearInterval(tick)
+            onCompleteRef.current()
+            return
+          }
+          if (status === "failed") {
+            done = true
+            clearInterval(tick)
+            setFailed(true)
+            return
+          }
+        }
+      } catch {
+        // network error — keep polling
+      }
+      setTimeout(poll, 2000)
+    }
+
+    setTimeout(poll, 1000)
+    return () => {
+      done = true
+      clearInterval(tick)
+    }
+  }, [profileId])
+
+  if (timedOut || failed) {
+    return (
+      <div
+        className="rounded-xl border p-8 flex flex-col items-center text-center gap-4"
+        style={{ background: "#1a0533", borderColor: "rgba(124,58,237,0.4)" }}
+      >
+        <div className="text-4xl">🧞</div>
+        <div>
+          <p className="font-semibold text-sm" style={{ color: "#e9d5ff" }}>
+            {timedOut ? "This is taking longer than usual" : "Something went wrong"}
+          </p>
+          <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "#a78bfa" }}>
+            {timedOut
+              ? `${name}'s character was saved. The illustrations may still be generating in the background — check back in a moment.`
+              : `${name}'s character was saved, but the illustrations didn't generate. You can regenerate them from the edit panel.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onError}
+          className="px-4 py-2 rounded-full text-sm font-semibold"
+          style={{ background: "rgba(124,58,237,0.3)", color: "#c4b5fd", border: "1px solid rgba(124,58,237,0.5)" }}
+        >
+          Continue
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="rounded-xl border p-8 flex flex-col items-center text-center gap-5"
+      style={{ background: "#1a0533", borderColor: "rgba(124,58,237,0.4)", minHeight: 280 }}
+    >
+      <div className="relative flex items-center justify-center">
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center text-3xl animate-pulse"
+          style={{ background: "rgba(251,191,36,0.15)", border: "1.5px solid rgba(251,191,36,0.3)" }}
+        >
+          🪔
+        </div>
+        <div
+          className="absolute w-2 h-2 rounded-full animate-spin"
+          style={{
+            background: "#fbbf24",
+            top: 0,
+            right: 4,
+            animationDuration: "2s",
+          }}
+        />
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold" style={{ color: "#e9d5ff" }}>
+          {message}
+        </p>
+        <p className="text-xs mt-1" style={{ color: "#7c5cbf" }}>
+          This usually takes about 30–60 seconds
+        </p>
+      </div>
+
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            className="w-1.5 h-1.5 rounded-full"
+            style={{
+              background: "#fbbf24",
+              opacity: (elapsed % 3) === i ? 1 : 0.25,
+              transition: "opacity 0.3s",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── ProfilesClient ───────────────────────────────────────────────────────────
 
 export function ProfilesClient({
@@ -218,6 +369,10 @@ export function ProfilesClient({
 
   const [showForm, setShowForm] = useState(initialProfiles.length === 0)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [generatingProfile, setGeneratingProfile] = useState<{
+    profileId: string
+    name: string
+  } | null>(null)
   const [pending, startTransition] = useTransition()
   // Stores the last completed fetch result alongside the ID it belongs to
   const [illustrationFetch, setIllustrationFetch] = useState<{
@@ -400,7 +555,12 @@ export function ProfilesClient({
           <h2 className="font-semibold mb-4">
             {profiles.length === 0 ? "Add your first character" : "New character"}
           </h2>
-          <ProfileForm onSuccess={() => setShowForm(false)} />
+          <ProfileForm
+            onCreated={(profileId, name) => {
+              setShowForm(false)
+              setGeneratingProfile({ profileId, name })
+            }}
+          />
           {profiles.length > 0 && (
             <button
               type="button"
@@ -411,6 +571,16 @@ export function ProfilesClient({
             </button>
           )}
         </div>
+      )}
+
+      {/* Luma generating overlay */}
+      {generatingProfile && !editingId && (
+        <LumaGeneratingOverlay
+          profileId={generatingProfile.profileId}
+          name={generatingProfile.name}
+          onComplete={() => setGeneratingProfile(null)}
+          onError={() => setGeneratingProfile(null)}
+        />
       )}
 
       {/* Empty state */}
