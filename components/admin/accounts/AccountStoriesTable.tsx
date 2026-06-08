@@ -65,12 +65,22 @@ export function AccountStoriesTable({ stories }: { stories: AccountStoryRow[] })
                   {formatDate(story.created_at)}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/workbench?storyId=${encodeURIComponent(story.id)}`}
-                    className="whitespace-nowrap rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                  >
-                    View in workbench
-                  </Link>
+                  <div className="flex flex-col items-end gap-2">
+                    <Link
+                      href={`/library/${encodeURIComponent(story.id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="whitespace-nowrap rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      View story
+                    </Link>
+                    <Link
+                      href={`/admin/workbench?storyId=${encodeURIComponent(story.id)}`}
+                      className="whitespace-nowrap rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      View in workbench
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}
