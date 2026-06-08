@@ -76,6 +76,13 @@ interface IllustrationBlockProps {
   imageUrl: string | null
   initialHistory: HistoryRow[]
   hasFieldsChanged: () => boolean
+  getCurrentFields: () => {
+    name?: string
+    gender?: string
+    appearance?: { eye_color?: string; skin_tone?: string; hair?: string }
+    personality_tags?: string[]
+    toy?: { name?: string; description?: string }
+  }
   onRegenSuccess: (url: string) => void
   onRestoreSuccess: (url: string, snapshot: Record<string, unknown> | null) => void
 }
@@ -87,6 +94,7 @@ function IllustrationBlock({
   imageUrl,
   initialHistory,
   hasFieldsChanged,
+  getCurrentFields,
   onRegenSuccess,
   onRestoreSuccess,
 }: IllustrationBlockProps) {
@@ -109,7 +117,7 @@ function IllustrationBlock({
       const res = await fetch("/api/profiles/regenerate-reference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileId, step: type }),
+        body: JSON.stringify({ profileId, step: type, currentFields: getCurrentFields() }),
       })
       const data = await res.json() as { url?: string; path?: string; error?: string }
       if (!res.ok || !data.url) {
@@ -726,10 +734,22 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
       <IllustrationBlock
         type="character"
         profileId={profile.id}
-        profileName={profile.name}
+        profileName={fieldValues.name}
         imageUrl={charUrl}
         initialHistory={charHistory}
         hasFieldsChanged={hasCharFieldsChanged}
+        getCurrentFields={() => ({
+          name: fieldValues.name,
+          gender: fieldValues.gender,
+          appearance: {
+            eye_color: fieldValues.eye_color,
+            skin_tone: fieldValues.skin_tone,
+            hair: fieldValues.hair,
+          },
+          personality_tags: fieldValues.personality_tags
+            ? [fieldValues.personality_tags]
+            : [],
+        })}
         onRegenSuccess={url => setCharUrl(url)}
         onRestoreSuccess={(url, snapshot) => {
           setCharUrl(url)
@@ -871,6 +891,12 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
             imageUrl={toyUrl}
             initialHistory={toyHistory}
             hasFieldsChanged={hasToyFieldsChanged}
+            getCurrentFields={() => ({
+              toy: {
+                name: fieldValues.toy_name,
+                description: fieldValues.toy_description,
+              },
+            })}
             onRegenSuccess={url => setToyUrl(url)}
             onRestoreSuccess={(url, snapshot) => {
               setToyUrl(url)
