@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createProfile, updateProfile } from "@/app/actions/profiles"
 import type { CreateProfileResult } from "@/app/actions/profiles"
-import { ChevronDown, History, Info, Loader2, RefreshCw, UserCircle, Wand2 } from "lucide-react"
+import { ChevronDown, History, Info, Loader2, UserCircle, Wand2 } from "lucide-react"
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
 
@@ -53,9 +53,6 @@ function formatHistoryDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
-function getInitials(name: string): string {
-  return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
-}
 
 function snapshotSummary(snapshot: Record<string, unknown> | null): string | null {
   if (!snapshot) return null
@@ -623,49 +620,12 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
     setToyFieldsRestored(true)
   }
 
-  const isGenerating = profile.illustration_status === "generating"
   const hasToyName = fieldValues.toy_name.trim().length > 0
 
   // ── Edit mode render ──────────────────────────────────────────────────────────
 
   return (
     <form action={formAction} onSubmit={() => { submittedRef.current = true }} className="space-y-5">
-      {/* ── Header ── */}
-      <div className="flex items-center gap-3">
-        <div className="relative w-14 h-14 shrink-0">
-          <div
-            className="w-full h-full rounded-full overflow-hidden flex items-center justify-center text-lg font-bold ring-2 ring-purple-500"
-            style={{ background: "#1a0533", color: "#e9d5ff" }}
-          >
-            {charUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={charUrl} alt={profile.name} className="w-full h-full object-cover" />
-            ) : (
-              getInitials(fieldValues.name || profile.name)
-            )}
-          </div>
-          {isGenerating && (
-            <div
-              className="absolute bottom-0 right-0 w-4 h-4 rounded-full flex items-center justify-center"
-              style={{ background: "#78350f", border: "1.5px solid #1a0533" }}
-            >
-              <RefreshCw className="w-2.5 h-2.5 text-amber-400" />
-            </div>
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="text-base font-medium truncate">{fieldValues.name || profile.name}</p>
-          <p className="text-[13px] text-muted-foreground truncate">
-            {fieldValues.age ? `${fieldValues.age}y` : ""}
-            {fieldValues.age_months ? ` ${fieldValues.age_months}m` : ""}
-            {fieldValues.gender ? ` · ${fieldValues.gender}` : ""}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Profile picture updates automatically — no wish needed.
-          </p>
-        </div>
-      </div>
-
       {/* ── CHARACTER DETAILS ── */}
       <p className="text-[10px] uppercase font-medium" style={{ color: "#a78bfa" }}>Character Details</p>
 
