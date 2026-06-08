@@ -4,6 +4,7 @@ import type { Story, KidProfile, StoryTemplate } from "@/types"
 import BookReader from "@/components/library/BookReader"
 import { fillPromptTemplateMulti } from "@/lib/ai/prompt-builder"
 import { createSignedImageUrlsMap, resolveStoryImagesForUi } from "@/lib/storage/images"
+import { isPlatformAdmin } from "@/lib/auth/platform-admin"
 
 export default async function StoryDetailPage({
   params,
@@ -22,7 +23,12 @@ export default async function StoryDetailPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: row } = await supabase
+  // Platform admins can read any story (service client bypasses RLS).
+  // Everyone else stays on the RLS-enforced client — own-account stories only.
+  const isAdmin = await isPlatformAdmin(user.id)
+  const db = isAdmin ? createServiceClient() : supabase
+
+  const { data: row } = await db
     .from("stories")
     .select(`
       *,
