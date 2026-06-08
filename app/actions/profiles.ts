@@ -2,12 +2,17 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { buildPromptSummary } from "@/lib/ai/prompt-builder"
+import { buildPromptSummary, buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
 import { genericizeToyDescription } from "@/lib/ai/toy-genericizer"
 import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
-import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap } from "@/lib/storage/images"
+import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
+import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
 import { logError } from "@/lib/logger"
 import type { KidAppearance, KidToy, KidProfile } from "@/types"
+
+export type CreateProfileResult =
+  | { error: string; profileId?: never }
+  | { profileId: string; error?: never }
 
 function parseProfileFormData(formData: FormData): {
   error: string | null
@@ -55,14 +60,17 @@ function parseProfileFormData(formData: FormData): {
   return { error: null, name: name.trim(), age, age_months, gender, appearance, personalityTags, toy }
 }
 
-export async function createProfile(prevState: string | null, formData: FormData): Promise<string | null> {
+export async function createProfile(
+  prevState: CreateProfileResult | null,
+  formData: FormData
+): Promise<CreateProfileResult> {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return "Not authenticated"
+    if (!user) return { error: "Not authenticated" }
 
     const parsed = parseProfileFormData(formData)
-    if (parsed.error) return parsed.error
+    if (parsed.error) return { error: parsed.error }
     const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
 
     if (toy.name && toy.name !== "their favorite toy") {
@@ -81,7 +89,7 @@ export async function createProfile(prevState: string | null, formData: FormData
       .eq("id", user.id)
       .single()
 
-    if (!userRow) return "User account not found"
+    if (!userRow) return { error: "User account not found" }
 
     const { data: inserted, error } = await service.from("kid_profiles").insert({
       account_id: userRow.account_id,
@@ -95,37 +103,116 @@ export async function createProfile(prevState: string | null, formData: FormData
       prompt_summary: promptSummary,
     }).select("*").single()
 
-    if (error) return error.message
+    if (error) return { error: error.message }
 
     if (inserted) {
-      const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
-      if (referenceUrl) {
-        const storedPath = await copyRemoteImageToStoragePath({
+      await service
+        .from("kid_profiles")
+        .update({ illustration_status: "pending" })
+        .eq("id", inserted.id)
+
+      ;(async () => {
+        const profileId = inserted.id
+
+        // Step 1 — Character illustration
+        const referenceUrl = await generateProfileReferenceImage(inserted as KidProfile).catch(() => null)
+        if (!referenceUrl) {
+          await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
+          return
+        }
+
+        const storedCharPath = await copyRemoteImageToStoragePath({
           supabase: service,
           sourceUrl: referenceUrl,
-          buildPath: (extension) => buildProfileReferenceImagePath(userRow.account_id, inserted.id, extension),
+          buildPath: (ext) => buildProfileReferenceImagePath(userRow.account_id, profileId, ext),
         })
 
-        if (storedPath) {
-          await service
-            .from("kid_profiles")
-            .update({
-              reference_image_path: storedPath,
-              reference_image_url: null,
-            })
-            .eq("id", inserted.id)
-        } else {
-          await service
-            .from("kid_profiles")
-            .update({ reference_image_url: referenceUrl })
-            .eq("id", inserted.id)
+        const charUrlForNext = storedCharPath
+          ? (await createSignedImageUrlsMap(service, [storedCharPath])).get(storedCharPath) ?? null
+          : referenceUrl
+
+        await service
+          .from("kid_profiles")
+          .update(
+            storedCharPath
+              ? { character_illustration_path: storedCharPath, character_illustration_url: null }
+              : { character_illustration_url: referenceUrl }
+          )
+          .eq("id", profileId)
+
+        if (!charUrlForNext) {
+          await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
+          return
         }
-      }
+
+        // Step 2 — Toy illustration (if toy name provided)
+        const hasToyName = !!(toy.name && toy.name !== "their favorite toy")
+        if (hasToyName) {
+          const toyPrompt = buildToyIllustrationPrompt(toy)
+          const falResponse = await fetch("https://fal.run/fal-ai/flux/dev", {
+            method: "POST",
+            headers: {
+              Authorization: `Key ${process.env.FAL_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              prompt: toyPrompt,
+              negative_prompt: NEGATIVE_PROMPT,
+              image_size: "square_hd",
+              num_inference_steps: 32,
+              guidance_scale: 7.0,
+              num_images: 1,
+            }),
+          }).catch(() => null)
+
+          if (!falResponse?.ok) {
+            await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
+            return
+          }
+
+          const falData = await falResponse.json().catch(() => null) as { images?: { url: string }[] } | null
+          const toyImageUrl = falData?.images?.[0]?.url ?? null
+
+          if (!toyImageUrl) {
+            await service.from("kid_profiles").update({ illustration_status: "failed" }).eq("id", profileId)
+            return
+          }
+
+          const ts = Date.now()
+          const storedToyPath = await copyRemoteImageToStoragePath({
+            supabase: service,
+            sourceUrl: toyImageUrl,
+            buildPath: (ext) => `accounts/${userRow.account_id}/profiles/${profileId}/toy/${ts}.${ext}`,
+            bucket: GENERATED_IMAGES_BUCKET,
+          })
+
+          await service
+            .from("kid_profiles")
+            .update(
+              storedToyPath
+                ? { toy_reference_image_path: storedToyPath, toy_reference_image_url: null }
+                : { toy_reference_image_url: toyImageUrl }
+            )
+            .eq("id", profileId)
+        }
+
+        // Step 3 — Combined reference
+        let toyDescription: string | null = null
+        if (toy.name && toy.name !== "their favorite toy") {
+          toyDescription = toy.name
+          const extra: string[] = []
+          if (toy.color) extra.push(toy.color)
+          if (toy.type) extra.push(toy.type)
+          if (extra.length > 0) toyDescription += `, a ${extra.join(" ")}`
+          if (toy.description) toyDescription += ` — ${toy.description}`
+        }
+        await generateAndSaveCombinedReference(profileId, charUrlForNext, toyDescription)
+      })().catch(() => null)
     }
 
     revalidatePath("/profiles")
     revalidatePath("/generate")
-    return null
+    return { profileId: inserted.id }
   } catch (error) {
     logError("createProfile failed", error, { action: "createProfile" })
     throw error
