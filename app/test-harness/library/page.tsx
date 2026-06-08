@@ -87,6 +87,9 @@ const baseStory = {
     image_model: "",
   },
   credits_used: 1,
+  is_published: false,
+  share_token: null,
+  published_at: null,
   deleted_at: null,
 } satisfies Partial<Story>
 
