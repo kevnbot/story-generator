@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronLeft, ChevronRight, Download, BookOpen, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, BookOpen, X, Share2 } from "lucide-react"
 import { Story, StoryImage } from "@/types"
 import PromptModal from "./PromptModal"
+import ShareModal from "./ShareModal"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
 
@@ -290,10 +291,14 @@ export default function BookReader({
   story,
   initialPage,
   initialStoryMode,
+  canShare = false,
+  publicView = false,
 }: {
   story: Story
   initialPage: number
   initialStoryMode: boolean
+  canShare?: boolean
+  publicView?: boolean
 }) {
   const pages = buildPages(story.content, story.images ?? [])
   const total = pages.length + 1 // 0 = title, 1..n = content
@@ -308,6 +313,7 @@ export default function BookReader({
   })
   const [storyMode, setStoryMode] = useState(() => initialStoryMode && hasContent)
   const [showPrompts, setShowPrompts] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   // Portal target (document.body) only exists on the client.
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -402,15 +408,33 @@ export default function BookReader({
             aria-hidden="true"
           />
 
-          {/* Top bar: Library · Story Mode · Download */}
+          {/* Top bar: Library/brand · Publish & share · Story Mode · Download */}
           <div className="no-print absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4 py-3">
-            <Link
-              href="/library"
-              className="text-sm text-white/60 transition-colors hover:text-white"
-            >
-              ← Library
-            </Link>
+            {publicView ? (
+              <Link
+                href="/"
+                className="text-sm text-white/60 transition-colors hover:text-white"
+              >
+                ✦ My Genie Stories
+              </Link>
+            ) : (
+              <Link
+                href="/library"
+                className="text-sm text-white/60 transition-colors hover:text-white"
+              >
+                ← Library
+              </Link>
+            )}
             <div className="flex items-center gap-2">
+              {canShare && !publicView && (
+                <button
+                  onClick={() => setShowShare(true)}
+                  className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition-colors hover:bg-white/20"
+                >
+                  <Share2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Publish &amp; share</span>
+                </button>
+              )}
               {current > 0 && hasContent && (
                 <button
                   onClick={enterStoryMode}
@@ -421,14 +445,16 @@ export default function BookReader({
                   <span className="hidden sm:inline">Story Mode</span>
                 </button>
               )}
-              <button
-                onClick={handleDownload}
-                aria-label="Download PDF"
-                className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition-colors hover:bg-white/20"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Download PDF</span>
-              </button>
+              {!publicView && (
+                <button
+                  onClick={handleDownload}
+                  aria-label="Download PDF"
+                  className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition-colors hover:bg-white/20"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Download PDF</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -478,6 +504,15 @@ export default function BookReader({
         <PromptModal
           params={story.generation_params}
           onClose={() => setShowPrompts(false)}
+        />
+      )}
+
+      {showShare && canShare && !publicView && (
+        <ShareModal
+          storyId={story.id}
+          isPublished={story.is_published}
+          shareToken={story.share_token}
+          onClose={() => setShowShare(false)}
         />
       )}
 

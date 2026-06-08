@@ -158,6 +158,9 @@ export interface Story {
   images: StoryImage[]
   generation_params: GenerationParams
   credits_used: number
+  is_published: boolean
+  share_token: string | null
+  published_at: string | null
   deleted_at: string | null
   created_at: string
 }

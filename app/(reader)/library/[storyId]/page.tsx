@@ -64,6 +64,15 @@ export default async function StoryDetailPage({
   }
 
   const service = createServiceClient()
+
+  // Only the owning account can publish/share (admins viewing another account cannot).
+  const { data: viewerRow } = await service
+    .from("users")
+    .select("account_id")
+    .eq("id", user.id)
+    .single()
+  const canShare = Boolean(viewerRow && r.account_id === viewerRow.account_id)
+
   const signedUrlsByPath = await createSignedImageUrlsMap(
     service,
     ((r.images ?? []) as Story["images"]).map((image) => image.path).filter((p): p is string => Boolean(p))
@@ -80,6 +89,8 @@ export default async function StoryDetailPage({
       story={story}
       initialPage={initialPage}
       initialStoryMode={initialStoryMode}
+      canShare={canShare}
+      publicView={false}
     />
   )
 }

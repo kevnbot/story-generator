@@ -9,6 +9,7 @@ const PUBLIC_ROUTES = [
   "/verify-email",
   "/forgot-password",
   "/reset-password",
+  "/share/",
   "/api/auth/callback",
   "/api/stripe/webhook",
   "/api/twilio/webhook",
