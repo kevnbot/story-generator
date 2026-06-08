@@ -72,13 +72,26 @@ function IntervalButton({
 // Primary "Choose plan" CTA for accounts that already have a subscription.
 // A second checkout session is not allowed, so this posts straight to the
 // Stripe billing portal where an existing plan is changed or managed.
-function ChoosePlanButton({ popular, disabled }: { popular: boolean; disabled: boolean }) {
+function ChoosePlanButton({
+  planId,
+  interval,
+  popular,
+  disabled,
+}: {
+  planId: BillingPlanId
+  interval: BillingInterval
+  popular: boolean
+  disabled: boolean
+}) {
   const [hovered, setHovered] = useState(false)
   const base = popular ? "#7c3aed" : "#d97706"
   const hover = popular ? "#6d28d9" : "#b45309"
 
   return (
     <form action="/api/stripe/portal" method="post">
+      <input type="hidden" name="plan" value={planId} />
+      <input type="hidden" name="interval" value={interval} />
+      <input type="hidden" name="return_to" value="/plans" />
       <button
         type="submit"
         disabled={disabled}
@@ -174,7 +187,7 @@ function PlanCard({
 
       <div className="mt-auto">
         {hasActiveSubscription ? (
-          <ChoosePlanButton popular={popular} disabled={!owner} />
+          <ChoosePlanButton planId={planId} interval={interval} popular={popular} disabled={!owner} />
         ) : (
           <form action="/api/stripe/checkout" method="post">
             <input type="hidden" name="plan" value={planId} />
