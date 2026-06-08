@@ -104,7 +104,7 @@ export function buildReferenceImagePrompt(profile: KidProfile): string {
 // multi-reference inputs.
 export function buildProfilePicturePrompt(
   profile: Pick<KidProfile, "name" | "age" | "age_months" | "gender">,
-  toy: { name: string; description?: string | null } | null
+  toy: { name: string; description?: string | null; generic_description?: string | null } | null
 ): string {
   const name = profile.name
   const pronoun = profile.gender === "girl" ? "her" : profile.gender === "boy" ? "his" : "their"
@@ -113,7 +113,8 @@ export function buildProfilePicturePrompt(
     return `Children's picture book illustration. @Image1 is ${name}. Portrait of ${name}. ${name}'s appearance must exactly match @Image1. Soft warm cream background. Portrait orientation. Warm and friendly composition. No other characters.`
   }
 
-  const toyDesc = toy.description ? `${toy.name} — ${toy.description}` : toy.name
+  const safeDesc = toy.generic_description ?? toy.description
+  const toyDesc = safeDesc ? `${toy.name} — ${safeDesc}` : toy.name
 
   return `Children's picture book illustration. @Image1 is ${name}. Portrait of ${name} with ${pronoun} treasured item, ${toyDesc}. ${name}'s appearance must exactly match @Image1. ${toy.name} is shown held gently or alongside ${name}. Soft warm cream background. Portrait orientation. Warm and friendly composition. No other characters.`
 }
@@ -130,15 +131,17 @@ export function buildCharacterAnchor(
       : p.gender === "boy" ? "human boy"
       : "human child"
     const appearance = buildAppearanceSummary(p.appearance)
-    const toy = buildToySummary(p.toy)
+    const safeDesc = p.toy.generic_description ?? p.toy.description
+    const toyText = p.toy.name
+      ? [p.toy.name, safeDesc].filter(Boolean).join(", ")
+      : null
     const outfit = outfits[p.name] ?? ""
 
     let desc = `${p.name} (${humanGender}, ${age}`
     if (appearance) desc += `, ${appearance}`
     if (outfit) desc += `, ${outfit}`
     desc += ")"
-    // Toy is clearly separated as a held object, not a character attribute
-    if (toy) desc += `. ${p.name}'s toy (a separate stuffed object ${p.name} holds, not part of their body): ${toy}`
+    if (toyText) desc += `. ${p.name}'s toy (a separate stuffed object ${p.name} holds, not part of their body): ${toyText}`
     return desc
   }
 
@@ -175,12 +178,15 @@ export function buildCharacterAnchorSlim(
       : p.gender === "boy" ? "human boy"
       : "human child"
     const appearance = buildAppearanceSummary(p.appearance)
-    const toy = buildToySummary(p.toy)
+    const safeDesc = p.toy.generic_description ?? p.toy.description
+    const toyText = p.toy.name
+      ? [p.toy.name, safeDesc].filter(Boolean).join(", ")
+      : null
     let desc = `${p.name} (${humanGender}, ${age}`
     if (appearance) desc += `, ${appearance}`
     if (outfit) desc += `, ${outfit}`
     desc += ")"
-    if (toy) desc += `. ${p.name}'s toy (a separate stuffed object, not part of their body): ${toy}`
+    if (toyText) desc += `. ${p.name}'s toy (a separate stuffed object, not part of their body): ${toyText}`
     return desc
   }
 
@@ -192,7 +198,8 @@ function buildToyObjectDescription(toy: KidToy): {
   objectPhrase: string
   posePhrase: string
 } {
-  const combined = `${toy.name} ${toy.description ?? ""}`.toLowerCase()
+  const safeDescription = toy.generic_description ?? toy.description
+  const combined = `${toy.name} ${safeDescription ?? ""}`.toLowerCase()
 
   if (/tiara|crown|wand|hat|cape|mask|glasses|bracelet|necklace|ring|bow|headband/.test(combined)) {
     return {
@@ -230,8 +237,9 @@ function buildToyObjectDescription(toy: KidToy): {
 
 export function buildToyIllustrationPrompt(toy: KidToy): string {
   const { objectPhrase, posePhrase } = buildToyObjectDescription(toy)
-  const descriptionClause = toy.description
-    ? ` ${toy.description}.`
+  const safeDescription = toy.generic_description ?? toy.description
+  const descriptionClause = safeDescription
+    ? ` ${safeDescription}.`
     : ""
 
   return `${objectPhrase}.${descriptionClause} ${posePhrase}. Children's picture book illustration style, simple, clean, detailed. Plain white background. No characters, no animals, no hands, no people.`

@@ -124,6 +124,24 @@ describe("prompt builder helpers", () => {
     expect(result).toContain("Uni")
   })
 
+  it("buildToyIllustrationPrompt — uses generic_description over description when present", () => {
+    const result = buildToyIllustrationPrompt({
+      name: "Branded Character",
+      description: "original brand description",
+      generic_description: "a small cartoon character toy with round ears",
+    })
+    expect(result).toContain("a small cartoon character toy with round ears")
+    expect(result).not.toContain("original brand description")
+  })
+
+  it("buildToyIllustrationPrompt — falls back to description when no generic_description", () => {
+    const result = buildToyIllustrationPrompt({
+      name: "Moon Bear",
+      description: "a silver stuffed bear",
+    })
+    expect(result).toContain("a silver stuffed bear")
+  })
+
   it("fills multi-profile template placeholders", () => {
     const luna = profile()
     const max = profile({

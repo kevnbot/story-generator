@@ -50,6 +50,7 @@ export interface KidToy {
   color?: string
   description?: string
   backstory?: string
+  generic_description?: string | null
 }
 
 export interface KidProfile {
