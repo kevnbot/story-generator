@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createProfile, updateProfile } from "@/app/actions/profiles"
-import { History, Loader2, RefreshCw, UserCircle, Wand2 } from "lucide-react"
+import { ChevronDown, History, Info, Loader2, RefreshCw, UserCircle, Wand2 } from "lucide-react"
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ interface EditProfile {
   gender?: string
   appearance: { hair?: string; hair_color?: string; eye_color?: string; skin_tone?: string }
   personality_tags: string[]
-  toy: { name: string; description?: string; type?: string }
+  toy: { name: string; description?: string; type?: string; generic_description?: string | null }
   reference_image_url?: string | null
   character_illustration_url?: string | null
   combined_reference_url?: string | null
@@ -438,6 +438,11 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
   const [charFieldsRestored, setCharFieldsRestored] = useState(false)
   const [toyRestorePrompt, setToyRestorePrompt] = useState<Record<string, unknown> | null>(null)
   const [toyFieldsRestored, setToyFieldsRestored] = useState(false)
+  const [showToyTip, setShowToyTip] = useState(false)
+  const [genericDesc] = useState<string | null>(
+    profile?.toy?.generic_description ?? null
+  )
+  const [showGenericDesc, setShowGenericDesc] = useState(false)
 
   // ── Create mode: early return (after all hooks) ──
   if (!profile) {
@@ -490,6 +495,30 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
         <div className="space-y-1.5">
           <Label htmlFor="personality_tags">Personality</Label>
           <Input id="personality_tags" name="personality_tags" placeholder="curious and adventurous, loves dinosaurs and building things" />
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] uppercase font-medium" style={{ color: "#a78bfa" }}>Companion</p>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowToyTip(v => !v)}
+              onBlur={() => setTimeout(() => setShowToyTip(false), 150)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-muted-foreground border border-border hover:bg-muted/50 transition-colors"
+              aria-label="Tips for toy descriptions"
+            >
+              <Info className="w-3 h-3" />
+              Tips for toy names
+            </button>
+            {showToyTip && (
+              <div
+                className="absolute right-0 top-full mt-1.5 z-20 w-56 rounded-lg border border-border bg-card p-3 text-[12px] text-muted-foreground leading-relaxed shadow-sm"
+                role="tooltip"
+              >
+                <p className="font-medium text-foreground mb-1">Describe toys in your own words</p>
+                Use descriptive language rather than brand names — for example, &ldquo;a small yellow sponge character&rdquo; instead of a branded name. This helps Luma illustrate your toy accurately in every story.
+              </div>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -720,7 +749,30 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
       <hr className="border-t border-border" />
 
       {/* ── COMPANION ── */}
-      <p className="text-[10px] uppercase font-medium" style={{ color: "#a78bfa" }}>Companion</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase font-medium" style={{ color: "#a78bfa" }}>Companion</p>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowToyTip(v => !v)}
+            onBlur={() => setTimeout(() => setShowToyTip(false), 150)}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-muted-foreground border border-border hover:bg-muted/50 transition-colors"
+            aria-label="Tips for toy descriptions"
+          >
+            <Info className="w-3 h-3" />
+            Tips for toy names
+          </button>
+          {showToyTip && (
+            <div
+              className="absolute right-0 top-full mt-1.5 z-20 w-56 rounded-lg border border-border bg-card p-3 text-[12px] text-muted-foreground leading-relaxed shadow-sm"
+              role="tooltip"
+            >
+              <p className="font-medium text-foreground mb-1">Describe toys in your own words</p>
+              Use descriptive language rather than brand names — for example, &ldquo;a small yellow sponge character&rdquo; instead of a branded name. This helps Luma illustrate your toy accurately in every story.
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
@@ -731,6 +783,57 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
           <Label htmlFor="toy_description">Toy description</Label>
           <Input id="toy_description" name="toy_description" placeholder="a worn brown stuffed bear" value={fieldValues.toy_description} onChange={setField("toy_description")} />
         </div>
+      </div>
+
+      {/* Luma generic description disclosure */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowGenericDesc(v => !v)}
+          className="flex items-center gap-2 w-full text-left"
+          aria-expanded={showGenericDesc}
+        >
+          <span
+            className="flex items-center justify-center w-[22px] h-[22px] rounded-full text-[13px] shrink-0"
+            style={{ background: "#fef3c7" }}
+            aria-hidden="true"
+          >
+            ✨
+          </span>
+          <span className="flex-1 text-[13px] font-medium text-foreground">
+            How Luma sees this toy
+          </span>
+          {!genericDesc && (
+            <span className="text-[11px] text-muted-foreground font-normal">
+              — add a description first
+            </span>
+          )}
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0 ${showGenericDesc ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {showGenericDesc && (
+          <div className="pl-[30px] pt-2">
+            {genericDesc ? (
+              <>
+                <div
+                  className="rounded-md p-2.5 text-[12px] leading-relaxed text-foreground"
+                  style={{ background: "#fffbf5", border: "0.5px solid #fbbf24" }}
+                >
+                  {genericDesc}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+                  Luma uses this to keep your toy consistent across illustrations. Update the description above to refresh it.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Save a toy description and Luma will generate a story-safe version.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {!hasToyName && (

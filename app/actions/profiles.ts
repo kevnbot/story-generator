@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
+import { genericizeToyDescription } from "@/lib/ai/toy-genericizer"
 import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
 import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap } from "@/lib/storage/images"
 import { logError } from "@/lib/logger"
@@ -63,6 +64,13 @@ export async function createProfile(prevState: string | null, formData: FormData
     const parsed = parseProfileFormData(formData)
     if (parsed.error) return parsed.error
     const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+
+    if (toy.name && toy.name !== "their favorite toy") {
+      const genericDesc = await genericizeToyDescription(toy.name, toy.description)
+      if (genericDesc) {
+        toy.generic_description = genericDesc
+      }
+    }
 
     const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
 
@@ -135,6 +143,13 @@ export async function updateProfile(profileId: string, prevState: string | null,
     const parsed = parseProfileFormData(formData)
     if (parsed.error) return parsed.error
     const { name, age, age_months, gender, appearance, personalityTags, toy } = parsed
+
+    if (toy.name && toy.name !== "their favorite toy") {
+      const genericDesc = await genericizeToyDescription(toy.name, toy.description)
+      if (genericDesc) {
+        toy.generic_description = genericDesc
+      }
+    }
 
     const promptSummary = buildPromptSummary({ name, age, age_months, gender, appearance, personality_tags: personalityTags, toy })
 

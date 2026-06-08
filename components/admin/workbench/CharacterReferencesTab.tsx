@@ -37,7 +37,7 @@ interface FullProfile {
     other?: string
   } | null
   personality_tags?: string[] | null
-  toy?: { name?: string; type?: string; color?: string; description?: string; backstory?: string } | null
+  toy?: { name?: string; type?: string; color?: string; description?: string; backstory?: string; generic_description?: string | null } | null
   reference_image_url?: string | null
   character_illustration_url?: string | null
   character_illustration_path?: string | null
@@ -431,7 +431,7 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
   const pfpPromptPreview = fullProfile
     ? buildProfilePicturePrompt(
         { name: fullProfile.name, age: fullProfile.age, age_months: fullProfile.age_months, gender: fullProfile.gender ?? undefined },
-        fullProfile.toy?.name ? { name: fullProfile.toy.name, description: fullProfile.toy.description ?? null } : null
+        fullProfile.toy?.name ? { name: fullProfile.toy.name, description: fullProfile.toy.description ?? null, generic_description: fullProfile.toy.generic_description ?? null } : null
       )
     : null
   const currentCharUrl = fullProfile?.character_illustration_url ?? fullProfile?.reference_image_url ?? null
@@ -541,10 +541,27 @@ export function CharacterReferencesTab({ profiles }: CharacterReferencesTabProps
             )}
 
             {hasToy && (
-              <div className="text-xs space-y-0.5">
+              <div className="text-xs space-y-1">
                 <p className="font-medium">{fullProfile.toy!.name}</p>
                 {fullProfile.toy?.description && (
-                  <p className="text-muted-foreground">{fullProfile.toy.description}</p>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Original</p>
+                    <p className="text-muted-foreground">{fullProfile.toy.description}</p>
+                  </div>
+                )}
+                {fullProfile.toy?.generic_description && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Story-safe (used in prompts)</p>
+                    <p
+                      className="rounded px-2 py-1 leading-relaxed"
+                      style={{ background: "#fffbf5", border: "0.5px solid #fbbf24", color: "inherit" }}
+                    >
+                      {fullProfile.toy.generic_description}
+                    </p>
+                  </div>
+                )}
+                {fullProfile.toy?.description && !fullProfile.toy?.generic_description && (
+                  <p className="text-[10px] text-amber-500">No story-safe description yet — regenerate from the profile to create one.</p>
                 )}
               </div>
             )}
