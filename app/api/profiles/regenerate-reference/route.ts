@@ -133,7 +133,7 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
     if (!process.env.FAL_KEY) {
       return NextResponse.json({ error: "FAL_KEY not configured" }, { status: 500 })
     }
-    const toyPrompt = buildToyIllustrationPrompt(effectiveProfile)
+    const toyPrompt = buildToyIllustrationPrompt(effectiveProfile.toy)
     const res = await falPost("fal-ai/flux/dev", {
       prompt: toyPrompt,
       negative_prompt: NEGATIVE_PROMPT,
