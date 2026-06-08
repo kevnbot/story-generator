@@ -123,19 +123,21 @@ function IllustrationBlock({
       if (!res.ok || !data.url) {
         setRegenError(data.error ?? "Regeneration failed")
       } else {
-        const newRow: HistoryRow = {
-          id: `temp-${Date.now()}`,
-          image_type: type,
-          image_url: data.url,
-          created_at: new Date().toISOString(),
-          profile_snapshot: null,
-          is_active: true,
-          activation_count: 0,
-          last_activated_at: null,
-        }
-        setHistory(prev => [newRow, ...prev.map(h => ({ ...h, is_active: false })).slice(0, 4)])
         setSelectedRestoreId(null)
         onRegenSuccess(data.url)
+        // Re-fetch history from server so the new entry is real, not a temp row
+        fetch(`/api/profiles/${profileId}/illustrations`)
+          .then(r => r.ok ? r.json() : null)
+          .then((d: {
+            history?: { character?: HistoryRow[]; toy?: HistoryRow[] }
+          } | null) => {
+            if (!d) return
+            const fresh = type === "character"
+              ? (d.history?.character ?? [])
+              : (d.history?.toy ?? [])
+            if (fresh.length > 0) setHistory(fresh)
+          })
+          .catch(() => null)
       }
     } catch {
       setRegenError("Request failed")
@@ -455,7 +457,7 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
     toy_description: initialToyDesc,
   })
 
-  const [charUrl, setCharUrl] = useState<string | null>(profile?.combined_reference_url ?? profile?.character_illustration_url ?? profile?.reference_image_url ?? null)
+  const [charUrl, setCharUrl] = useState<string | null>(profile?.character_illustration_url ?? null)
   const [toyUrl, setToyUrl] = useState<string | null>(profile?.toy_reference_image_url ?? null)
   const [charHistory] = useState<HistoryRow[]>(profile?.character_history ?? [])
   const [toyHistory] = useState<HistoryRow[]>(profile?.toy_history ?? [])
