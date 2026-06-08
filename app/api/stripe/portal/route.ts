@@ -4,6 +4,7 @@ import { logError } from "@/lib/logger"
 import { getBillingOwnerContext } from "@/lib/billing/owner"
 import { getStripe } from "@/lib/billing/stripe"
 import { getBillingPriceId, isBillingInterval, isBillingPlanId } from "@/lib/billing/plans"
+import { getPlanChangePortalConfigurationId } from "@/lib/billing/portal-config"
 
 // Only allow returning to known internal billing surfaces to avoid open redirects.
 const RETURN_PATHS = new Set(["/account/billing", "/plans"])
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
   try {
     const stripe = getStripe()
     let flowData: Stripe.BillingPortal.SessionCreateParams.FlowData | undefined
+    let configurationId: string | null = null
 
     // When a target plan is provided (the "Choose plan" buttons on /plans),
     // deep-link straight into Stripe's plan-change flow instead of dropping the
@@ -65,7 +67,13 @@ export async function POST(request: Request) {
       const subscriptionId = sub?.stripe_subscription_id as string | undefined
       const targetPrice = getBillingPriceId(planValue, intervalValue)
 
+      // Use an app-managed portal configuration with plan switching enabled,
+      // rather than the account's ambiguous default configuration.
       if (subscriptionId) {
+        configurationId = await getPlanChangePortalConfigurationId(stripe)
+      }
+
+      if (subscriptionId && configurationId) {
         // Pre-confirm the switch to the selected price when it differs from the
         // current one. Stripe needs the subscription item id, which we don't
         // persist, so fetch it from the live subscription.
@@ -95,6 +103,7 @@ export async function POST(request: Request) {
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: returnUrl,
+      ...(configurationId ? { configuration: configurationId } : {}),
       ...(flowData ? { flow_data: flowData } : {}),
     })
 
