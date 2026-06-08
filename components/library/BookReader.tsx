@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronLeft, ChevronRight, Download, BookOpen, X } from "lucide-react"
@@ -8,6 +9,17 @@ import { Story, StoryImage } from "@/types"
 import PromptModal from "./PromptModal"
 
 const STORY_IMAGE_ERROR_PATH = "/images/story-image-error.svg"
+
+// Pick a print font size so each page's text fits alongside its image.
+// (Pure CSS can't auto-fit arbitrary-length text to a fixed-height box.)
+function printFontSize(len: number): string {
+  if (len > 1100) return "0.78rem"
+  if (len > 900) return "0.85rem"
+  if (len > 700) return "0.95rem"
+  if (len > 500) return "1.0rem"
+  if (len > 350) return "1.08rem"
+  return "1.15rem"
+}
 
 // ─── Page model ───────────────────────────────────────────────────────────────
 
@@ -296,6 +308,20 @@ export default function BookReader({
   })
   const [storyMode, setStoryMode] = useState(() => initialStoryMode && hasContent)
   const [showPrompts, setShowPrompts] = useState(false)
+  // Portal target (document.body) only exists on the client.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  // Ensure every print image is decoded before opening the print dialog,
+  // otherwise the first print can capture blank images from the hidden layout.
+  const handleDownload = useCallback(async () => {
+    const root = document.getElementById("print-layout")
+    if (root) {
+      const imgs = Array.from(root.querySelectorAll("img"))
+      await Promise.all(imgs.map((img) => img.decode().catch(() => {})))
+    }
+    window.print()
+  }, [])
 
   const prev = useCallback(() => setCurrent((i) => Math.max(0, i - 1)), [])
   const next = useCallback(() => setCurrent((i) => Math.min(total - 1, i + 1)), [total])
@@ -396,7 +422,7 @@ export default function BookReader({
                 </button>
               )}
               <button
-                onClick={() => window.print()}
+                onClick={handleDownload}
                 aria-label="Download PDF"
                 className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition-colors hover:bg-white/20"
               >
@@ -455,48 +481,63 @@ export default function BookReader({
         />
       )}
 
-      {/* ── Print layout (hidden on screen, rendered when printing) ── */}
-      <div id="print-layout">
-        {/* Title page */}
-        <div className="print-page">
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "1.5rem", textAlign: "center", padding: "3rem", background: "#fdf8f0" }}>
-            <div style={{ fontSize: "4rem" }}>📖</div>
-            <h1 style={{ fontFamily: "Georgia, serif", fontSize: "2.5rem", fontWeight: "bold", color: "#2d1f0e", lineHeight: 1.2, margin: 0 }}>
-              {story.title}
-            </h1>
-            <div style={{ width: "4rem", height: "1px", background: "#c4a882" }} />
-            <p style={{ fontFamily: "Georgia, serif", fontSize: "1rem", color: "#8a6f4e", margin: 0 }}>
-              {dateLabel}
-            </p>
-          </div>
-        </div>
-
-        {/* Content pages */}
-        {pages.map((p, i) => {
-          const isPrintError = p.image?.url === STORY_IMAGE_ERROR_PATH
-          return (
-            <div key={i} className="print-page" style={{ background: "#fdf8f0" }}>
-              {p.image && (
-                <img
-                  src={p.image.url}
-                  alt={isPrintError ? "" : (p.image.caption ?? "")}
-                  style={{ width: "100%", height: "auto", display: "block" }}
-                />
-              )}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1.5rem 2.5rem" }}>
-                {isPrintError && (
-                  <p style={{ fontFamily: "sans-serif", fontSize: "0.75rem", color: "#9ca3af", marginBottom: "0.75rem", textAlign: "center" }}>
-                    We had trouble creating this illustration
-                  </p>
-                )}
-                <p style={{ fontFamily: "Georgia, serif", fontSize: "1.15rem", lineHeight: 1.85, color: "#2d1f0e", textAlign: "center", margin: 0 }}>
-                  {p.text}
+      {/* ── Print layout — portaled to <body> so it escapes the reader's
+          overflow:hidden ancestor (which otherwise clips it to one page) ── */}
+      {mounted &&
+        createPortal(
+          <div id="print-layout">
+            {/* Title page */}
+            <div className="print-page">
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "1.5rem", textAlign: "center", padding: "3rem" }}>
+                <div style={{ fontSize: "4rem" }}>📖</div>
+                <h1 style={{ fontFamily: "Georgia, serif", fontSize: "2.5rem", fontWeight: "bold", color: "#2d1f0e", lineHeight: 1.2, margin: 0 }}>
+                  {story.title}
+                </h1>
+                <div style={{ width: "4rem", height: "1px", background: "#c4a882" }} />
+                <p style={{ fontFamily: "Georgia, serif", fontSize: "1rem", color: "#8a6f4e", margin: 0 }}>
+                  {dateLabel}
                 </p>
               </div>
             </div>
-          )
-        })}
-      </div>
+
+            {/* Content pages */}
+            {pages.map((p, i) => {
+              const isPrintError = p.image?.url === STORY_IMAGE_ERROR_PATH
+              return (
+                <div key={i} className="print-page">
+                  {p.image && (
+                    <img
+                      className="print-img"
+                      src={p.image.url}
+                      alt={isPrintError ? "" : (p.image.caption ?? "")}
+                    />
+                  )}
+                  <div className="print-text-wrap">
+                    {isPrintError && (
+                      <p style={{ fontFamily: "sans-serif", fontSize: "0.75rem", color: "#9ca3af", marginBottom: "0.75rem", textAlign: "center" }}>
+                        We had trouble creating this illustration
+                      </p>
+                    )}
+                    <p
+                      style={{
+                        fontFamily: "Georgia, serif",
+                        fontSize: printFontSize(p.text.length),
+                        lineHeight: 1.7,
+                        color: "#2d1f0e",
+                        textAlign: "center",
+                        maxWidth: "60ch",
+                        margin: 0,
+                      }}
+                    >
+                      {p.text}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>,
+          document.body
+        )}
 
       <style>{`
         @keyframes bookPageIn {
@@ -519,6 +560,8 @@ export default function BookReader({
         #print-layout { display: none; }
 
         @media print {
+          @page { size: auto; margin: 0; }
+          html, body { margin: 0; padding: 0; }
           body * { visibility: hidden; }
           #print-layout,
           #print-layout * { visibility: visible; }
@@ -530,13 +573,38 @@ export default function BookReader({
             width: 100%;
           }
           .print-page {
-            width: 100vw;
+            box-sizing: border-box;
+            width: 100%;
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            background: #fdf8f0 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
             break-after: page;
             page-break-after: always;
+          }
+          .print-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .print-img {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            max-height: 50vh;
+            object-fit: contain;
+            margin: 0 auto;
+          }
+          .print-text-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 2.5rem;
+            overflow: hidden;
           }
         }
       `}</style>
