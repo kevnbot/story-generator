@@ -8,8 +8,16 @@ import {
 import { getStripe, isStripeAutomaticTaxEnabled } from "@/lib/billing/stripe"
 import { getBillingOwnerContext } from "@/lib/billing/owner"
 
-function billingRedirect(request: Request, params?: Record<string, string>) {
-  const url = new URL("/account/billing", request.url)
+// Only allow returning to known internal billing surfaces to avoid open redirects.
+const RETURN_PATHS = new Set(["/account/billing", "/plans"])
+
+function resolveReturnPath(value: FormDataEntryValue | null) {
+  const path = typeof value === "string" ? value : ""
+  return RETURN_PATHS.has(path) ? path : "/account/billing"
+}
+
+function billingRedirect(request: Request, returnPath: string, params?: Record<string, string>) {
+  const url = new URL(returnPath, request.url)
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, value)
   }
@@ -20,20 +28,21 @@ export async function POST(request: Request) {
   const formData = await request.formData()
   const planId = String(formData.get("plan") ?? "")
   const interval = String(formData.get("interval") ?? "")
+  const returnPath = resolveReturnPath(formData.get("return_to"))
 
   if (!isBillingPlanId(planId) || !isBillingInterval(interval)) {
-    return billingRedirect(request, { error: "invalid_plan" })
+    return billingRedirect(request, returnPath, { error: "invalid_plan" })
   }
 
   const option = getBillingPlanOption(planId, interval)
   if (!option.priceId) {
-    return billingRedirect(request, { error: "billing_unavailable" })
+    return billingRedirect(request, returnPath, { error: "billing_unavailable" })
   }
 
   const context = await getBillingOwnerContext()
   if (!context.ok) {
     if (context.error === "login") return NextResponse.redirect(new URL("/login", request.url), { status: 303 })
-    return billingRedirect(request, { error: "owner_required" })
+    return billingRedirect(request, returnPath, { error: "owner_required" })
   }
 
   const { user, userRow, service } = context
@@ -46,13 +55,13 @@ export async function POST(request: Request) {
     .maybeSingle()
 
   if (existingSubscription) {
-    return billingRedirect(request, { error: "use_portal" })
+    return billingRedirect(request, returnPath, { error: "use_portal" })
   }
 
   const automaticTaxEnabled = isStripeAutomaticTaxEnabled()
   const origin = new URL(request.url).origin
-  const successUrl = `${origin}/account/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`
-  const cancelUrl = `${origin}/account/billing?checkout=canceled`
+  const successUrl = `${origin}${returnPath}?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+  const cancelUrl = `${origin}${returnPath}?checkout=canceled`
 
   try {
     const { data: billingProfile } = await service
@@ -88,7 +97,7 @@ export async function POST(request: Request) {
     })
 
     if (!session.url) {
-      return billingRedirect(request, { error: "checkout_failed" })
+      return billingRedirect(request, returnPath, { error: "checkout_failed" })
     }
 
     await service.from("billing_checkout_sessions").insert({
@@ -117,6 +126,6 @@ export async function POST(request: Request) {
       billing_plan: option.plan.id,
       billing_interval: option.interval,
     })
-    return billingRedirect(request, { error: "checkout_failed" })
+    return billingRedirect(request, returnPath, { error: "checkout_failed" })
   }
 }

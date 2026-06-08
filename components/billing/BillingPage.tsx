@@ -1,11 +1,5 @@
-import {
-  BILLING_PLANS,
-  formatMoney,
-  getBillingPlanOption,
-  getIntervalLabel,
-  type BillingInterval,
-  type BillingPlanId,
-} from "@/lib/billing/plans"
+import Link from "next/link"
+import { BILLING_PLANS } from "@/lib/billing/plans"
 import type { AccountBillingProfile, BillingSubscription, CreditTransaction } from "@/types"
 
 type BillingPageProps = {
@@ -50,28 +44,6 @@ function errorMessage(error: string | null) {
     default:
       return null
   }
-}
-
-function SubscribeForm({ planId, interval, disabled }: {
-  planId: BillingPlanId
-  interval: BillingInterval
-  disabled: boolean
-}) {
-  const option = getBillingPlanOption(planId, interval)
-
-  return (
-    <form action="/api/stripe/checkout" method="post">
-      <input type="hidden" name="plan" value={planId} />
-      <input type="hidden" name="interval" value={interval} />
-      <button
-        type="submit"
-        disabled={disabled || !option.configured}
-        className="h-10 w-full rounded-lg bg-genie-purple-600 px-4 text-sm font-semibold text-white transition hover:bg-genie-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {option.configured ? `Choose ${getIntervalLabel(interval)}` : "Price not configured"}
-      </button>
-    </form>
-  )
 }
 
 export function BillingPage({
@@ -125,9 +97,15 @@ export function BillingPage({
       )}
 
       <section className="mb-8 grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-nav-border bg-white p-4">
+        <div className="flex flex-col rounded-lg border border-nav-border bg-white p-4">
           <p className="text-sm text-muted-foreground">Current wishes</p>
           <p className="mt-2 text-3xl font-semibold text-genie-gold-800">{account.credit_balance}</p>
+          <Link
+            href="/plans"
+            className="mt-3 inline-flex h-9 w-fit items-center justify-center rounded-lg bg-genie-purple-600 px-4 text-sm font-semibold text-white transition hover:bg-genie-purple-700"
+          >
+            Upgrade plan
+          </Link>
         </div>
         <div className="rounded-lg border border-nav-border bg-white p-4">
           <p className="text-sm text-muted-foreground">Plan</p>
@@ -182,43 +160,6 @@ export function BillingPage({
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2">
-        {(Object.keys(BILLING_PLANS) as BillingPlanId[]).map((planId) => {
-          const plan = BILLING_PLANS[planId]
-          const monthly = getBillingPlanOption(planId, "month")
-          const yearly = getBillingPlanOption(planId, "year")
-          return (
-            <article key={plan.id} className="rounded-lg border border-nav-border bg-white p-5">
-              <div className="mb-4">
-                <h2 className="text-xl font-semibold text-foreground">{plan.name}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
-              </div>
-              <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-genie-purple-100 bg-genie-purple-50 p-3">
-                  <p className="text-2xl font-semibold">{formatMoney(monthly.amount)}</p>
-                  <p className="text-sm text-muted-foreground">per month</p>
-                  <p className="mt-1 text-sm font-medium">{monthly.wishesGranted} wishes</p>
-                </div>
-                <div className="rounded-lg border border-genie-gold-200 bg-genie-gold-50 p-3">
-                  <p className="text-2xl font-semibold">{formatMoney(yearly.amount)}</p>
-                  <p className="text-sm text-muted-foreground">per year</p>
-                  <p className="mt-1 text-sm font-medium">{yearly.wishesGranted} wishes upfront</p>
-                </div>
-              </div>
-              <ul className="mb-5 space-y-2 text-sm text-muted-foreground">
-                {plan.highlights.map((highlight) => (
-                  <li key={highlight}>{highlight}</li>
-                ))}
-              </ul>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <SubscribeForm planId={planId} interval="month" disabled={!owner} />
-                <SubscribeForm planId={planId} interval="year" disabled={!owner} />
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">Plus applicable tax.</p>
-            </article>
-          )
-        })}
-      </section>
     </div>
   )
 }

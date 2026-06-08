@@ -27,6 +27,74 @@ function initials(name: string | null) {
   return letters || "👤"
 }
 
+// Magical wishes pill. Resting state shows the current balance; on hover the
+// pill glows, the stars twinkle, a small sparkle burst pops, and the label
+// morphs to "Add wishes" — linking to the plans page. Inline styles override
+// CSS `:hover`, so hover state is tracked in React; the keyframes (reused from
+// the StoryLibrary sparkle pattern) are injected once via a <style> tag.
+function WishesPill({ credits }: { credits: number }) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <Link
+      href="/plans"
+      aria-label={`${credits} wishes — add more`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="relative flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer outline-none focus-visible:ring-2"
+      style={{
+        backgroundColor: hovered ? "#fffbeb" : "#fef3c7",
+        border: `1px solid ${hovered ? "#f59e0b" : "#fbbf24"}`,
+        color: "#92400e",
+        boxShadow: hovered ? "0 0 0 3px #fde68a" : "none",
+        transform: hovered ? "scale(1.04)" : "scale(1)",
+        transition: "background-color 150ms, border-color 150ms, box-shadow 150ms, transform 150ms",
+      }}
+    >
+      <style>{`
+        @keyframes wishpill-pop {
+          0%   { opacity: 0; transform: scale(0) translateY(0); }
+          40%  { opacity: 1; transform: scale(1.2) translateY(-8px); }
+          100% { opacity: 0; transform: scale(0.5) translateY(-16px); }
+        }
+        @keyframes wishpill-twinkle {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+          50%      { transform: scale(1.35) rotate(18deg); opacity: 0.7; }
+        }
+        .wishpill-star { display: inline-block; }
+        .wishpill-spark {
+          position: absolute;
+          pointer-events: none;
+          font-size: 9px;
+          color: #f59e0b;
+          opacity: 0;
+        }
+        .wishpill-hovered .wishpill-star { animation: wishpill-twinkle 1.1s ease-in-out infinite; }
+        .wishpill-hovered .wishpill-spark-0 { animation: wishpill-pop 1.4s ease-out 0s infinite; }
+        .wishpill-hovered .wishpill-spark-1 { animation: wishpill-pop 1.4s ease-out 0.5s infinite; }
+        .wishpill-hovered .wishpill-spark-2 { animation: wishpill-pop 1.4s ease-out 0.9s infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .wishpill-hovered .wishpill-star,
+          .wishpill-hovered .wishpill-spark-0,
+          .wishpill-hovered .wishpill-spark-1,
+          .wishpill-hovered .wishpill-spark-2 { animation: none; }
+          .wishpill-hovered .wishpill-spark { opacity: 0; }
+        }
+      `}</style>
+
+      <span className={hovered ? "wishpill-hovered contents" : "contents"}>
+        {/* decorative sparkle burst */}
+        <span aria-hidden className="wishpill-spark wishpill-spark-0" style={{ top: "-6px", left: "10%" }}>✦</span>
+        <span aria-hidden className="wishpill-spark wishpill-spark-1" style={{ top: "-4px", right: "16%" }}>✨</span>
+        <span aria-hidden className="wishpill-spark wishpill-spark-2" style={{ bottom: "-6px", left: "45%" }}>✦</span>
+
+        <span aria-hidden className="wishpill-star">{hovered ? "✨" : "✦"}</span>
+        <span>{hovered ? "Add wishes" : `${credits} wishes`}</span>
+      </span>
+    </Link>
+  )
+}
+
 // Inline top-nav link with a hover affordance. Inline styles override CSS
 // `:hover`, so hover state is tracked in React.
 function NavLink({
@@ -108,17 +176,7 @@ export function Nav({
           {/* Right side: wishes pill + avatar dropdown */}
           <div className="flex items-center gap-3 shrink-0">
             {/* Wishes pill */}
-            <div
-              className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium"
-              style={{
-                backgroundColor: "#fef3c7",
-                border: "1px solid #fbbf24",
-                color: "#92400e",
-              }}
-            >
-              <span>✦</span>
-              <span>{credits} wishes</span>
-            </div>
+            <WishesPill credits={credits} />
 
             {/* Avatar dropdown */}
             <DropdownMenu.Root>
