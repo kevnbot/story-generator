@@ -102,6 +102,6 @@ describe("BillingPage", () => {
     )
 
     expect(screen.getByText("Ask the account owner to change billing.")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: /price not configured/i })[0]).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /manage billing/i })).not.toBeInTheDocument()
   })
 })

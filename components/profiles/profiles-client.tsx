@@ -21,6 +21,7 @@ interface HistoryRow {
 }
 
 interface IllustrationData {
+  combined_reference_url: string | null
   character_illustration_url: string | null
   toy_reference_image_url: string | null
   illustration_status: string | null
@@ -330,6 +331,10 @@ export function ProfilesClient({
             key={illustrationLoading ? `${editingId}-pending` : `${editingId}-loaded`}
             profile={{
               ...editingProfile,
+              combined_reference_url:
+                illustrationData?.combined_reference_url
+                ?? editingProfile.combined_reference_url
+                ?? null,
               character_illustration_url:
                 illustrationData?.character_illustration_url
                 ?? editingProfile.character_illustration_url

@@ -31,6 +31,7 @@ interface EditProfile {
   toy: { name: string; description?: string; type?: string }
   reference_image_url?: string | null
   character_illustration_url?: string | null
+  combined_reference_url?: string | null
   toy_reference_image_url?: string | null
   illustration_status?: string | null
   character_history?: HistoryRow[]
@@ -428,7 +429,7 @@ export function ProfileForm({ onSuccess, profile, waitForIllustration, profileId
     toy_description: initialToyDesc,
   })
 
-  const [charUrl, setCharUrl] = useState<string | null>(profile?.character_illustration_url ?? profile?.reference_image_url ?? null)
+  const [charUrl, setCharUrl] = useState<string | null>(profile?.combined_reference_url ?? profile?.character_illustration_url ?? profile?.reference_image_url ?? null)
   const [toyUrl, setToyUrl] = useState<string | null>(profile?.toy_reference_image_url ?? null)
   const [charHistory] = useState<HistoryRow[]>(profile?.character_history ?? [])
   const [toyHistory] = useState<HistoryRow[]>(profile?.toy_history ?? [])

@@ -40,12 +40,12 @@ function story(overrides: Partial<Story> = {}): Story {
 describe("PromptViewer", () => {
   it("shows a workbench link for each story without nesting it in the expand button", async () => {
     const user = userEvent.setup()
-    render(<PromptViewer stories={[story()]} />)
+    render(<PromptViewer rows={[{ story: story(), ownerName: "Test Owner", ownerEmail: null }]} />)
 
     const link = screen.getByRole("link", { name: /view in workbench/i })
     expect(link).toHaveAttribute("href", "/admin/workbench?storyId=story-1")
 
-    await user.click(screen.getByRole("button", { name: /moon adventure/i }))
+    await user.click(screen.getByText("Moon Adventure"))
 
     expect(screen.getByText("System Prompt")).toBeInTheDocument()
     expect(screen.getByText("User Prompt")).toBeInTheDocument()
