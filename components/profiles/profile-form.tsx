@@ -207,12 +207,12 @@ function IllustrationBlock({
 
       {/* Image block */}
       <div
-        className="w-full overflow-hidden rounded-lg border border-border"
+        className="w-full overflow-hidden rounded-lg border border-border bg-[#fffbf5]"
         style={{ aspectRatio: "16/7" }}
       >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt={profileName} className="w-full h-full object-cover" />
+          <img src={imageUrl} alt={profileName} className="w-full h-full object-contain" />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground bg-muted/20">
             <UserCircle className="w-8 h-8" />
