@@ -316,6 +316,7 @@ export default function BookReader({
   const [showShare, setShowShare] = useState(false)
   // Portal target (document.body) only exists on the client.
   const [mounted, setMounted] = useState(false)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), [])
 
   // Ensure every print image is decoded before opening the print dialog,

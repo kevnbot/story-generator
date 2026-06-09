@@ -59,6 +59,7 @@ export function AdminAccountsTable({ rows }: { rows: AdminAccountRow[] }) {
   }, [rows, query, sortKey, sortDir])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1)
   }, [query, sortKey, sortDir])
 
