@@ -178,28 +178,6 @@ function TradingCard({
   )
 }
 
-// ─── AddCard ──────────────────────────────────────────────────────────────────
-
-function AddCard({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-center justify-center transition-opacity hover:opacity-80"
-      style={{
-        borderRadius: 16,
-        border: "2.5px dashed #7c3aed",
-        background: "rgba(124,58,237,0.05)",
-        minHeight: 280,
-        color: "#7c3aed",
-      }}
-    >
-      <span className="text-3xl mb-2">✦</span>
-      <span className="text-sm font-semibold">Add character</span>
-    </button>
-  )
-}
-
 // ─── LumaGeneratingOverlay ────────────────────────────────────────────────────
 
 function LumaGeneratingOverlay({
@@ -536,25 +514,6 @@ export function ProfilesClient({
         </div>
       )}
 
-      {/* Card grid */}
-      {!editingId && (
-        <div className="grid grid-cols-2 gap-4">
-          {profiles.map(profile => (
-            <TradingCard
-              key={profile.id}
-              profile={profile}
-              onEdit={() => { setShowForm(false); setEditingId(profile.id) }}
-              onDelete={() => handleDelete(profile.id)}
-              pending={pending}
-            />
-          ))}
-          {/* Add card always visible in grid */}
-          {!showForm && (
-            <AddCard onClick={() => setShowForm(true)} />
-          )}
-        </div>
-      )}
-
       {/* Add form */}
       {showForm && !editingId && (
         <div className="rounded-xl border p-5 bg-card">
@@ -576,6 +535,21 @@ export function ProfilesClient({
               Cancel
             </button>
           )}
+        </div>
+      )}
+
+      {/* Card grid */}
+      {!editingId && (
+        <div className="grid grid-cols-2 gap-4">
+          {profiles.map(profile => (
+            <TradingCard
+              key={profile.id}
+              profile={profile}
+              onEdit={() => { setShowForm(false); setEditingId(profile.id) }}
+              onDelete={() => handleDelete(profile.id)}
+              pending={pending}
+            />
+          ))}
         </div>
       )}
 
