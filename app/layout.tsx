@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "My Genie Stories — Personalized bedtime stories for your family",
   description: "Create personalized AI-powered bedtime stories starring your child. My Genie Stories grants your family's story wishes.",
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon-32.png',
+  },
 };
 
 export default function RootLayout({
