@@ -538,6 +538,16 @@ export function ProfilesClient({
         </div>
       )}
 
+      {/* Luma generating overlay */}
+      {generatingProfile && !editingId && (
+        <LumaGeneratingOverlay
+          profileId={generatingProfile.profileId}
+          name={generatingProfile.name}
+          onComplete={() => setGeneratingProfile(null)}
+          onError={() => setGeneratingProfile(null)}
+        />
+      )}
+
       {/* Card grid */}
       {!editingId && (
         <div className="grid grid-cols-2 gap-4">
@@ -551,16 +561,6 @@ export function ProfilesClient({
             />
           ))}
         </div>
-      )}
-
-      {/* Luma generating overlay */}
-      {generatingProfile && !editingId && (
-        <LumaGeneratingOverlay
-          profileId={generatingProfile.profileId}
-          name={generatingProfile.name}
-          onComplete={() => setGeneratingProfile(null)}
-          onError={() => setGeneratingProfile(null)}
-        />
       )}
 
       {/* Empty state */}

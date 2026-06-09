@@ -3,8 +3,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { withRouteLogging } from "@/lib/api/with-logging"
 import { logError } from "@/lib/logger"
 import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
-import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
 import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
+import { genericizeToyDescription } from "@/lib/ai/toy-genericizer"
 import { copyRemoteImageToStoragePath, createSignedImageUrlsMap, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
 import type { KidProfile } from "@/types"
 
@@ -115,6 +115,16 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
       }
     : profile
 
+  if (step === "toy" && currentFields?.toy) {
+    const freshGeneric = await genericizeToyDescription(
+      effectiveProfile.toy?.name ?? "",
+      effectiveProfile.toy?.description
+    )
+    if (freshGeneric) {
+      effectiveProfile.toy = { ...effectiveProfile.toy, generic_description: freshGeneric }
+    }
+  }
+
   if (step === "toy" && !effectiveProfile.toy?.name) {
     return NextResponse.json({ error: "Profile has no toy name" }, { status: 400 })
   }
@@ -136,7 +146,6 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
     const toyPrompt = buildToyIllustrationPrompt(effectiveProfile.toy)
     const res = await falPost("fal-ai/flux/dev", {
       prompt: toyPrompt,
-      negative_prompt: NEGATIVE_PROMPT,
       image_size: "square_hd",
       num_inference_steps: 32,
       guidance_scale: 7.0,
@@ -244,7 +253,7 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
 
     const profileUpdates = isChar
       ? { character_illustration_path: path, character_illustration_url: null, illustration_status: "complete" }
-      : { toy_reference_image_path: path, toy_reference_image_url: null, illustration_status: "complete" }
+      : { toy_reference_image_path: path, toy_reference_image_url: null, illustration_status: "complete", toy: effectiveProfile.toy }
 
     await service
       .from("kid_profiles")
@@ -267,7 +276,7 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
     // Fire-and-forget combined generation if profile now has both character and toy
     const charPath = isChar ? path : profile.character_illustration_path
     const hasToyName = !!effectiveProfile.toy?.name
-    if (charPath && hasToyName) {
+    if (isChar && charPath && profile.toy_reference_image_path && hasToyName) {
       ;(async () => {
         const signedMap = await createSignedImageUrlsMap(service, [charPath])
         const charUrl = signedMap.get(charPath) ?? null
@@ -288,7 +297,7 @@ export const POST = withRouteLogging("profiles/regenerate-reference", async (req
       })().catch(() => null)
     }
 
-    return NextResponse.json({ url: imageUrl, path })
+    return NextResponse.json({ url: imageUrl, path, genericDescription: step === "toy" ? (effectiveProfile.toy?.generic_description ?? null) : null })
   } catch (e) {
     logError("profile regen: post-deduct failed", e, {
       area: "profile_regen_post_deduct",

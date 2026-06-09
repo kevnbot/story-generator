@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildToyIllustrationPrompt } from "@/lib/ai/prompt-builder"
 import { generateProfileReferenceImage, generateAndSaveCombinedReference } from "@/lib/ai/image"
-import { NEGATIVE_PROMPT } from "@/lib/ai/image-providers/fal"
 import { buildProfileReferenceImagePath, copyRemoteImageToStoragePath, createSignedImageUrlsMap, GENERATED_IMAGES_BUCKET } from "@/lib/storage/images"
 import { logError } from "@/lib/logger"
 import type { KidProfile, KidToy } from "@/types"
@@ -106,7 +105,6 @@ export async function POST(
           },
           body: JSON.stringify({
             prompt: toyPrompt,
-            negative_prompt: NEGATIVE_PROMPT,
             image_size: "square_hd",
             num_inference_steps: 32,
             guidance_scale: 7.0,

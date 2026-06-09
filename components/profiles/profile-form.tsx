@@ -80,7 +80,7 @@ interface IllustrationBlockProps {
     personality_tags?: string[]
     toy?: { name?: string; description?: string }
   }
-  onRegenSuccess: (url: string) => void
+  onRegenSuccess: (url: string, genericDescription?: string | null) => void
   onRestoreSuccess: (url: string, snapshot: Record<string, unknown> | null) => void
 }
 
@@ -116,12 +116,12 @@ function IllustrationBlock({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId, step: type, currentFields: getCurrentFields() }),
       })
-      const data = await res.json() as { url?: string; path?: string; error?: string }
+      const data = await res.json() as { url?: string; path?: string; error?: string; genericDescription?: string | null }
       if (!res.ok || !data.url) {
         setRegenError(data.error ?? "Regeneration failed")
       } else {
         setSelectedRestoreId(null)
-        onRegenSuccess(data.url)
+        onRegenSuccess(data.url, data.genericDescription)
         // Re-fetch history from server so the new entry is real, not a temp row
         fetch(`/api/profiles/${profileId}/illustrations`)
           .then(r => r.ok ? r.json() : null)
@@ -464,7 +464,7 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
   const [toyRestorePrompt, setToyRestorePrompt] = useState<Record<string, unknown> | null>(null)
   const [toyFieldsRestored, setToyFieldsRestored] = useState(false)
   const [showToyTip, setShowToyTip] = useState(false)
-  const [genericDesc] = useState<string | null>(
+  const [genericDesc, setGenericDesc] = useState<string | null>(
     profile?.toy?.generic_description ?? null
   )
   const [showGenericDesc, setShowGenericDesc] = useState(false)
@@ -859,7 +859,10 @@ export function ProfileForm({ onSuccess, onCreated, profile, waitForIllustration
                 description: fieldValues.toy_description,
               },
             })}
-            onRegenSuccess={url => setToyUrl(url)}
+            onRegenSuccess={(url, genericDescription) => {
+              setToyUrl(url)
+              if (genericDescription) setGenericDesc(genericDescription)
+            }}
             onRestoreSuccess={(url, snapshot) => {
               setToyUrl(url)
               if (snapshot && Object.keys(snapshot).length > 0) {

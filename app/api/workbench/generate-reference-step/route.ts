@@ -88,7 +88,6 @@ export const POST = withRouteLogging("workbench/generate-reference-step", async 
     const model = "fal-ai/flux/dev"
     const response = await falRun(model, {
       prompt: toyPrompt,
-      negative_prompt: NEGATIVE_PROMPT,
       image_size: "square_hd",
       num_inference_steps: 32,
       guidance_scale: 7.0,
