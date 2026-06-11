@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, startTransition } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
@@ -256,17 +256,20 @@ export function Nav({
                     style={{ backgroundColor: "#f0d9c0" }}
                   />
 
-                  <DropdownMenu.Item onSelect={() => {}}>
-                    <form action={logout}>
-                      <button
-                        type="submit"
-                        className="flex w-full items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer outline-none transition-colors data-[highlighted]:bg-[#f5f0ff]"
-                        style={{ color: "#b45309" }}
-                      >
-                        <span>↩</span>
-                        <span>Sign out</span>
-                      </button>
-                    </form>
+                  <DropdownMenu.Item
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      startTransition(() => { logout() })
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer outline-none transition-colors data-[highlighted]:bg-[#f5f0ff]"
+                      style={{ color: "#b45309" }}
+                    >
+                      <span>↩</span>
+                      <span>Sign out</span>
+                    </button>
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
