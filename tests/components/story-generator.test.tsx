@@ -31,7 +31,7 @@ describe("StoryGenerator", () => {
     render(<StoryGenerator profiles={[]} artStyles={[]} credits={1} imagesAvailable={false} />)
 
     expect(screen.getByRole("heading", { name: "Add a kid profile first" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Create a profile" })).toHaveAttribute("href", "/profile/new")
+    expect(screen.getByRole("link", { name: "Create a profile" })).toHaveAttribute("href", "/profiles")
   })
 
   it("disables generation when credits are insufficient", async () => {

@@ -260,7 +260,7 @@ export function StoryGenerator({
           Profiles let us personalize the story with your child&apos;s name, age, and favorite things.
         </p>
         <Button asChild>
-          <a href="/profile/new">Create a profile</a>
+          <a href="/profiles">Create a profile</a>
         </Button>
       </div>
     )
