@@ -1,7 +1,6 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { cookies } from "next/headers"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { buildPromptSummary } from "@/lib/ai/prompt-builder"
 import { genericizeToyDescription } from "@/lib/ai/toy-genericizer"
@@ -111,26 +110,6 @@ export async function createProfile(
         .update({ illustration_status: "pending" })
         .eq("id", inserted.id)
 
-      // Capture the session cookie before the action returns so the route can authenticate
-      const cookieHeader = (await cookies()).toString()
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
-        ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-
-      // Fire-and-forget — the route runs in its own request context
-      fetch(`${baseUrl}/api/profiles/${inserted.id}/generate-all-references`, {
-        method: "POST",
-        headers: { Cookie: cookieHeader },
-      }).then(async (res) => {
-        if (!res.ok) {
-          const body = await res.text().catch(() => `HTTP ${res.status}`)
-          logError("generate-all-references fetch failed", new Error(body), {
-            profile_id: inserted.id,
-            status: res.status,
-          })
-        }
-      }).catch((e) => {
-        logError("generate-all-references fetch error", e, { profile_id: inserted.id })
-      })
     }
 
     revalidatePath("/profiles")

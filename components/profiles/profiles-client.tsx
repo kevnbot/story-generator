@@ -524,6 +524,7 @@ export function ProfilesClient({
             onCreated={(profileId, name) => {
               setShowForm(false)
               setGeneratingProfile({ profileId, name })
+              fetch(`/api/profiles/${profileId}/generate-all-references`, { method: "POST" })
             }}
           />
           {profiles.length > 0 && (
