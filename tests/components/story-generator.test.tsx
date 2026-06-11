@@ -35,10 +35,7 @@ describe("StoryGenerator", () => {
   })
 
   it("disables generation when credits are insufficient", async () => {
-    const user = userEvent.setup()
     render(<StoryGenerator profiles={profiles} artStyles={artStyles} credits={1} imagesAvailable={true} />)
-
-    await user.click(screen.getByRole("button", { name: "Include illustrations" }))
 
     expect(screen.getByText("Not enough wishes. Purchase more to continue.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "✦ Grant my wishes" })).toBeDisabled()
@@ -77,7 +74,7 @@ describe("StoryGenerator", () => {
       storyLength: "medium",
       storyDescription: "a rocket bedtime race",
       customTitle: "Rocket Bedtime",
-      includeImages: false,
+      includeImages: true,
     })
     expect(screen.getByRole("link", { name: "Read it now" })).toHaveAttribute("href", "/library/story-123")
   })

@@ -131,7 +131,7 @@ export function StoryGenerator({
   const [textDensity, setTextDensity] = useState<TextDensityKey>(DEFAULT_TEXT_DENSITY)
   const [storyDescription, setStoryDescription] = useState("")
   const [customTitle, setCustomTitle] = useState("")
-  const [includeImages, setIncludeImages] = useState(false)
+  const [includeImages, setIncludeImages] = useState(true)
   const [feedback, setFeedback] = useState("")
   const [status, setStatus] = useState<"idle" | "generating" | "done" | "error">("idle")
   const [statusMessage, setStatusMessage] = useState("")
