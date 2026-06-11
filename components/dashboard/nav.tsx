@@ -256,7 +256,7 @@ export function Nav({
                     style={{ backgroundColor: "#f0d9c0" }}
                   />
 
-                  <DropdownMenu.Item asChild>
+                  <DropdownMenu.Item onSelect={() => {}}>
                     <form action={logout}>
                       <button
                         type="submit"
